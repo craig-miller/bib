@@ -2,7 +2,7 @@
 """Screenshot the ctrl-y style picker + a non-default (IEEE) CSL card."""
 import asyncio
 import sys
-from papers import GraphApp
+from papers.app import PapersApp
 
 OUT = "/tmp/pgstyle"
 
@@ -17,7 +17,7 @@ async def land(pilot, app, ref):
 
 
 async def main() -> None:
-    app = GraphApp()
+    app = PapersApp()
     async with app.run_test(size=(170, 46)) as pilot:
         await pilot.pause()
         await land(pilot, app, "Anselin1995")

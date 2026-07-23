@@ -27,7 +27,7 @@ import papis.database
 import papis.citations
 from papis.yaml import list_to_path
 
-import graph_core as gc
+from . import core as gc
 
 
 async def process(client: gc.Client, doc, res, enrich: dict, *, dry_run: bool) -> None:

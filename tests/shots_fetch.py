@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Screenshot the PDF picker (FetchScreen): discovery + live %PDF verify."""
 import asyncio, sys
-from papers import GraphApp, FetchScreen, Node
+from papers.app import PapersApp, FetchScreen, Node
 
 OUT = "/tmp/pg_fetch"
 
@@ -23,7 +23,7 @@ async def settle(app, pilot, timeout=80):
     return False
 
 async def main():
-    app = GraphApp()
+    app = PapersApp()
     async with app.run_test(size=(150, 30)) as pilot:
         await pilot.pause()
         for name, node in CASES:

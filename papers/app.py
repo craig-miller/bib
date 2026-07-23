@@ -26,17 +26,15 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import importlib.resources
 import json
 import os
 import subprocess
 import tempfile
 
-# Disable papis's multiprocessing BEFORE importing papis. papis parallelises document
-# matching (`filter_documents` → `parmap` → `multiprocessing.Pool`), which every db query
-# and `papis add` triggers. Under Textual, sys.stdout/stderr are replaced with objects whose
-# fileno() is -1, so the Pool's worker spawn dies with "bad value(s) in fds_to_keep". Serial
-# matching is plenty for interactive single queries anyway; PAPIS_NP=0 forces it (papis knob).
-os.environ["PAPIS_NP"] = "0"
+# NOTE: `PAPIS_NP=0` (disables papis's multiprocessing, which crashes under Textual — see
+# papers/__init__.py for the full reason) is set in the package __init__, which runs before
+# this module imports papis. Don't import papis above that guard.
 
 from dataclasses import dataclass, field, fields
 from typing import Any
@@ -60,7 +58,7 @@ import papis.commands.rm
 import papis.document
 from papis.document import Document
 
-import graph_core as gc
+from . import core as gc
 
 # Leading-column icon by reference type. Glyphs are Font Awesome 4.7 (Nerd Font PUA,
 # \uFxxx) so they render in JetBrains Mono Nerd Font. Keyed by a canonical type; the
@@ -706,32 +704,38 @@ class StyleScreen(ModalScreen["str | None"]):
 # invented layout — the familiar bibliography form a researcher already reads fluently.
 # citeproc-py renders in-process (pure Python, ~1 ms/entry); the parsed style is cached.
 # Library nodes render from their papis Document; grey nodes from a doc-shaped dict we build.
-# Styles bundle with the tool (styles/csl/*.csl next to this module) so it stays self-contained.
-# The set is the subset of Typst's bundled CSL styles that citeproc-py 0.10 (CSL 1.0.1) can
-# actually render — sourced via citeproc-py-styles, validated at build time. Named by their CSL
-# id so they match Typst's `#bibliography(style: …)` names. The active style + the ctrl-s mode
-# persist in graph-state.json; ctrl-y opens the picker. PAPIS_GRAPH_CSL_STYLE overrides.
-_STYLE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "styles", "csl")
+# Styles ship as package data (papers/styles/csl/*.csl) so the tool stays self-contained — located
+# via importlib.resources so it works whether run from source or an installed wheel. The set is the
+# subset of Typst's bundled CSL styles that citeproc-py 0.10 (CSL 1.0.1) can render — sourced via
+# citeproc-py-styles, validated at build time. Named by their CSL id so they match Typst's
+# `#bibliography(style: …)` names. The active style + the ctrl-s mode persist in the papers config;
+# ctrl-y opens the picker. PAPERS_CSL_STYLE (or legacy PAPIS_GRAPH_CSL_STYLE) overrides.
+_STYLE_DIR = os.fspath(importlib.resources.files(__package__) / "styles" / "csl")
 _DEFAULT_STYLE_ID = "taylor-and-francis-harvard-x"
 
-# Small persisted UI state (CSL mode + chosen style), so choices survive a restart. Lives in the
-# papis config folder; best-effort (never fatal).
-_STATE_PATH = os.path.join(papis.config.get_config_folder(), "graph-state.json")
+# Small persisted UI state (CSL mode + chosen style), so choices survive a restart. papers owns its
+# own config dir; best-effort (never fatal). Migrates once from the old papis-config location.
+_CONFIG_DIR = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "papers")
+_STATE_PATH = os.path.join(_CONFIG_DIR, "state.json")
+_OLD_STATE_PATH = os.path.join(papis.config.get_config_folder(), "graph-state.json")
 
 
 def _load_state() -> dict:
-    try:
-        with open(_STATE_PATH) as f:
-            return json.load(f)
-    except Exception:
-        return {}
+    for path in (_STATE_PATH, _OLD_STATE_PATH):          # new location, then one-time migration read
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except Exception:
+            continue
+    return {}
 
 
 def _save_state(**kw: Any) -> None:
     state = _load_state()
     state.update(kw)
     try:
-        os.makedirs(os.path.dirname(_STATE_PATH), exist_ok=True)
+        os.makedirs(_CONFIG_DIR, exist_ok=True)
         with open(_STATE_PATH, "w") as f:
             json.dump(state, f)
     except Exception:
@@ -740,7 +744,7 @@ def _save_state(**kw: Any) -> None:
 
 def _style_path() -> str:
     """Absolute path to the active CSL style: env override → chosen id in the bundle → default."""
-    env = os.environ.get("PAPIS_GRAPH_CSL_STYLE")
+    env = os.environ.get("PAPERS_CSL_STYLE") or os.environ.get("PAPIS_GRAPH_CSL_STYLE")
     if env:
         return env
     sid = _load_state().get("csl_style") or _DEFAULT_STYLE_ID
@@ -958,7 +962,7 @@ class TopCard(Vertical):
 # --------------------------------------------------------------------------- #
 # app                                                                          #
 # --------------------------------------------------------------------------- #
-class GraphApp(App):
+class PapersApp(App):
     CSS = """
     Screen { layout: vertical; }
     #card { height: 19; border: round $primary; padding: 0 1; }
@@ -1557,4 +1561,4 @@ class GraphApp(App):
 
 
 if __name__ == "__main__":
-    GraphApp().run()
+    PapersApp().run()

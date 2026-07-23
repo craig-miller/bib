@@ -1,7 +1,7 @@
 import asyncio, sys
-from papers import GraphApp
+from papers.app import PapersApp
 async def main():
-    app = GraphApp()
+    app = PapersApp()
     async with app.run_test(size=(150, 46)) as pilot:
         await pilot.pause()
         for _ in range(len(app.library)):

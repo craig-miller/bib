@@ -573,7 +573,18 @@ class FetchScreen(ModalScreen["str | None"]):
             table.add_row(*self._cells(c), key=str(i))
         hint.update(f"{len(cands)} source(s) · verifying… · enter=download · esc=cancel")
         await asyncio.gather(*(self._verify_row(i) for i in range(len(cands))))
+        # Favor real PDFs (like the original `papis fetch`): re-sort so ✓-verified rows come first
+        # — keeping the version rank among them — then any pending, then rejected ✗ last. The sort
+        # is stable, so discovery order is preserved within each group. Rebuild the table from the
+        # reordered candidates (row index still maps to self._cands) and land the cursor on the
+        # best verified PDF.
+        self._cands.sort(key=lambda c: (c.get("ok") is not True, c.get("ok") is False))
+        table.clear()
+        for i, c in enumerate(self._cands):
+            table.add_row(*self._cells(c), key=str(i))
         n_ok = sum(1 for c in self._cands if c.get("ok"))
+        if n_ok:
+            table.move_cursor(row=0)
         hint.update(f"{n_ok} verified PDF(s) of {len(self._cands)} · "
                     "enter=download · esc=cancel")
 

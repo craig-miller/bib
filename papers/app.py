@@ -1223,7 +1223,7 @@ class PapersApp(App):
         n = self._selected_node()
         if not n:
             return
-        label = "citations" if direction == "cited" else "references"
+        label = "Citations" if direction == "cited" else "References"
         if n.doc is not None:
             cites, cited = self._neighbors(n)
             self._promote(cited if direction == "cited" else cites, f"{label} of {n.label}")

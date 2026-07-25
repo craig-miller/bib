@@ -1018,6 +1018,9 @@ class PapersApp(App):
     #center.hidden { display: none; }        /* ctrl-d: table hidden while Details is expanded */
     #status { height: 1; color: $text-muted; padding: 0 1; }
     DataTable > .datatable--cursor { background: $accent; }
+    /* ANSI theme paints the header on ansi_bright_blue; force dark text so it stays legible
+       (terminal default fg is light in dark mode → too low contrast on the bright header). */
+    DataTable > .datatable--header { color: ansi_black; }
     """
 
     ENABLE_COMMAND_PALETTE = False   # free ctrl+p for "home"

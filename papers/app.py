@@ -530,6 +530,28 @@ class FetchScreen(ModalScreen["str | None"]):
             t.add_column(label, key=key, width=width)
         t.focus()
         self._discover()
+        self.call_after_refresh(self._fit_detail)
+
+    def _fit_detail(self) -> None:
+        """Grow the Detail column to fill the leftover width so Size sits flush at the right edge.
+        DataTable has no flex column, so compute it: table width − the other (fixed) render widths.
+        `get_render_width` = 2·cell_padding + width, so account for padding on every column."""
+        t = self.query_one("#fetch-table", DataTable)
+        region = t.scrollable_content_region                 # excludes border/padding/scrollbar
+        total = region.width or t.size.width
+        if total <= 0:
+            return
+        pad = 2 * t.cell_padding
+        fixed = sum(pad + w for k, _, w in _FETCH_COLS if k != "detail")
+        detail_w = max(20, total - fixed - pad)
+        for key, col in t.columns.items():
+            if key.value == "detail":
+                col.width, col.auto_width = detail_w, False
+        t._require_update_dimensions = True
+        t.refresh()
+
+    def on_resize(self) -> None:
+        self.call_after_refresh(self._fit_detail)
 
     def _cells(self, c: dict) -> tuple:
         ok = c.get("ok")
@@ -544,7 +566,7 @@ class FetchScreen(ModalScreen["str | None"]):
             mark,
             Text(c["source"], style=base),
             Text((c.get("host") or "")[:26], style=base),
-            Text((c.get("label") or "")[:40], style=base),
+            Text((c.get("label") or "")[:200], style=base),   # DataTable clips to the column width
             Text(str(c.get("size") or ""), style=base or "dim", justify="right"),
         )
 
@@ -572,6 +594,7 @@ class FetchScreen(ModalScreen["str | None"]):
             self._cands.append(c)
             table.add_row(*self._cells(c), key=str(i))
         hint.update(f"{len(cands)} source(s) · verifying… · enter=download · esc=cancel")
+        self.call_after_refresh(self._fit_detail)   # re-fit once rows exist (scrollbar now present)
         await asyncio.gather(*(self._verify_row(i) for i in range(len(cands))))
         # Favor real PDFs (like the original `papis fetch`): re-sort so ✓-verified rows come first
         # — keeping the version rank among them — then any pending, then rejected ✗ last. The sort
@@ -587,6 +610,7 @@ class FetchScreen(ModalScreen["str | None"]):
             table.move_cursor(row=0)
         hint.update(f"{n_ok} verified PDF(s) of {len(self._cands)} · "
                     "enter=download · esc=cancel")
+        self.call_after_refresh(self._fit_detail)
 
     async def _verify_row(self, i: int) -> None:
         c = self._cands[i]

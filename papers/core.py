@@ -52,7 +52,7 @@ OA_BASE = "https://api.openalex.org"
 
 S2_NEIGHBOR_FIELDS = "paperId,externalIds,title,year,authors,citationCount,venue,publicationTypes"
 OA_WORK_SELECT = ("id,ids,doi,title,display_name,publication_year,type,"
-                  "cited_by_count,authorships")
+                  "cited_by_count,referenced_works_count,authorships")
 
 TITLE_MATCH_MIN = 90        # fuzz.ratio threshold for identity (same-paper) matching
 MAX_RETRIES = 6
@@ -251,7 +251,7 @@ class Client:
 # query-string value (comma-joined); ids go in the JSON body. Collapses N per-paper
 # calls into ceil(N/500) — the polite way to use S2, and it minimises exposure to the
 # per-request 429s. Nested `references.*` returns each paper's bibliography inline.
-S2_BATCH_FIELDS = ("externalIds,title,year,authors,citationCount,"
+S2_BATCH_FIELDS = ("externalIds,title,year,authors,citationCount,referenceCount,"
                    "influentialCitationCount,isOpenAccess,openAccessPdf,"
                    "references.externalIds,references.title,references.year,"
                    "references.authors,references.citationCount")
@@ -310,6 +310,7 @@ def s2_to_citation(paper: dict, *, is_influential: bool | None = None) -> dict:
         "type": (paper.get("publicationTypes") or [None])[0],
         "journal": paper.get("venue"),
         "citation_count": paper.get("citationCount"),
+        "reference_count": paper.get("referenceCount"),
         "s2_id": paper.get("paperId"), "corpus_id": ext.get("CorpusId"),
         "arxiv": ext.get("ArXiv"), "pmid": ext.get("PubMed"),
         "url": f"https://doi.org/{doi}" if doi else paper.get("url"),
@@ -333,6 +334,7 @@ def oa_to_citation(work: dict) -> dict:
         "author_list": authors, "author": _flat_author(authors),
         "doi": doi, "type": work.get("type"),
         "citation_count": work.get("cited_by_count"),
+        "reference_count": work.get("referenced_works_count"),
         "openalex_id": oa_id,
         "pmid": (ids.get("pmid") or "").replace("https://pubmed.ncbi.nlm.nih.gov/", "") or None,
         "url": f"https://doi.org/{doi}" if doi else work.get("id"),
@@ -589,6 +591,7 @@ def s2_enrichment(rec: dict) -> dict:
     return _clean({
         "s2_citation_count": rec.get("citationCount"),
         "s2_influential_citation_count": rec.get("influentialCitationCount"),
+        "s2_reference_count": rec.get("referenceCount"),
         "s2_id": rec.get("paperId"),
         "openaccess_pdf": oa.get("url"),
     })

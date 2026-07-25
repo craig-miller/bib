@@ -268,7 +268,8 @@ class Node:
     year: Any = None
     author: str = ""
     doi: str | None = None
-    citation_count: Any = None
+    citation_count: Any = None              # times this paper is cited (incoming)
+    reference_count: Any = None             # references this paper makes (outgoing)
     influential_count: Any = None           # S2 influentialCitationCount (subject papers)
     is_influential: bool | None = None      # only meaningful for a cited-by edge
     type: str | None = None                  # biblatex / OpenAlex / S2 reference type
@@ -315,6 +316,11 @@ def node_from_doc(doc: Document) -> Node:
         doi=(str(doc["doi"]).lower() if doc.get("doi") else None),
         citation_count=(doc.get("s2_citation_count") or doc.get("cited_by_count")
                         or doc.get("citation_count")),
+        # references the paper makes: a stored count if we have one (free), else count the
+        # references sidecar (small — a paper's bibliography), else None → shown as "-".
+        reference_count=(doc.get("s2_reference_count") or doc.get("referenced_works_count")
+                         or (len(papis.citations.get_citations(doc))
+                             if papis.citations.has_citations(doc) else None)),
         influential_count=doc.get("s2_influential_citation_count"),
         type=doc.get("type"),
         ids={k: doc[k] for k in ("s2_id", "openalex_id", "corpus_id") if doc.get(k)},
@@ -350,6 +356,7 @@ def node_from_citation(cit: dict, doi_index: dict[str, Document]) -> Node:
         author=str(cit.get("author", "")),
         doi=doi,
         citation_count=cit.get("citation_count"),
+        reference_count=cit.get("reference_count"),
         is_influential=cit.get("isInfluential"),
         type=cit.get("type"),
         ids={k: cit[k] for k in ("s2_id", "openalex_id", "corpus_id") if cit.get(k)},
@@ -1058,7 +1065,7 @@ class PapersApp(App):
         self.library = sorted((node_from_doc(d) for d in docs),
                               key=lambda n: str(n.year or ""))
         table = self.query_one("#center", DataTable)
-        table.add_columns(" ", "Year", "Author", "Title", "Infl", "Citations")
+        table.add_columns(" ", "Year", "Author", "Title", "Infl", "Citations", "References")
         self.query_one(TopCard).csl_mode = bool(_load_state().get("csl_mode", False))
         self._push(Frame("Papers", self.library))
         table.focus()
@@ -1109,6 +1116,7 @@ class PapersApp(App):
             t = t[:71] + "…"
         cited = fmt_count(n.citation_count)
         infl = fmt_count(n.influential_count)
+        refs = fmt_count(n.reference_count)
         # Leading glyph colour = download status (independent of the row's in-library grey):
         # grey when the content file isn't on disk, else its normal colour (yellow for an
         # influential citation edge, default otherwise).
@@ -1125,6 +1133,7 @@ class PapersApp(App):
             Text(t, style=style),
             Text(infl, style="yellow" if infl else (style or "dim"), justify="right"),
             Text(cited, style=style or "dim", justify="right"),
+            Text(refs, style=style or "dim", justify="right"),
         )
 
     def _render_center(self) -> None:

@@ -568,7 +568,7 @@ class FetchScreen(ModalScreen["str | None"]):
             mark = Text("✗ " + c.get("status", ""), style="red")
         else:
             mark = Text("⋯", style="dim")
-        base = "grey50" if ok is False else None
+        base = "bright_black" if ok is False else None
         return (
             mark,
             Text(c["source"], style=base),
@@ -704,7 +704,7 @@ class StyleScreen(ModalScreen["str | None"]):
             if here:
                 cursor = len(self._filtered)
             t.add_row(Text(mark + sid, style=style),
-                      Text(title, style="grey62"), key=sid)
+                      Text(title, style="dim"), key=sid)
             self._filtered.append(sid)
         if self._filtered:
             t.move_cursor(row=cursor)
@@ -880,7 +880,7 @@ class TopCard(Vertical):
         maxw = max(24, self.size.width - 2 - len(label) - 2)
         if len(joined) > maxw:
             joined = joined[: maxw - 1] + "…"
-        t.append(f"\n{label}: ", style="grey50")
+        t.append(f"\n{label}: ", style="bright_black")
         t.append(joined, style=style)
 
     def _normal_head(self, t: Text, n: Node) -> int:
@@ -892,7 +892,7 @@ class TopCard(Vertical):
         rows = max(1, -(-len(head) // max(1, self.size.width)))    # ceil-divide → wrapped rows
         t.append(f"{n.year or '—'}  ", style="cyan")
         t.append(title, style="bold")
-        t.append(badge, style="grey50")
+        t.append(badge, style="bright_black")
         t.append("\n")
         t.append(n.author or "—", style="italic")
         rows += 1
@@ -902,7 +902,7 @@ class TopCard(Vertical):
             if len(venue) > maxw:
                 venue = venue[: maxw - 1] + "…"
             t.append("\n")
-            t.append(venue, style="grey70")
+            t.append(venue, style="dim")
             rows += 1
         # cited-by/influential live in the centered bottom row; this line is IDs only —
         # show DOI and ISBN both when both exist (a book/chapter can carry each).
@@ -935,7 +935,7 @@ class TopCard(Vertical):
                 seg.stylize("bold", i, i + len(title))
         t.append(seg)
         if not n.in_library:
-            t.append("  ○ not in library", style="grey50")
+            t.append("  ○ not in library", style="bright_black")
         # An author-date journal style (tandf-harvard) omits the publisher and DOI/ISBN, so the
         # CSL paragraph loses what our plain card shows. Restore them below — publisher on its own
         # line, DOI/ISBN on the next — but only fields the style didn't already print (a DOI-
@@ -971,10 +971,10 @@ class TopCard(Vertical):
             t.append("\n")                        # blank line: separate head from Topics/Keywords
             rows += 1
         if n.topics:
-            self._line(t, "Topics", n.topics, "grey62")   # muted, like the abstract (no highlight)
+            self._line(t, "Topics", n.topics, "dim")   # muted, like the abstract (no highlight)
             rows += 1
         if n.keywords:
-            self._line(t, "Keywords", n.keywords, "grey62")
+            self._line(t, "Keywords", n.keywords, "dim")
             rows += 1
         if n.abstract:
             # Fill the BODY region's ACTUAL remaining space (the @ref line is a separate
@@ -987,7 +987,7 @@ class TopCard(Vertical):
             if len(abstract) > budget:
                 abstract = abstract[:budget - 1].rsplit(" ", 1)[0] + "…"
             t.append("\n\n")
-            t.append(abstract, style="italic grey62")
+            t.append(abstract, style="italic dim")
         body.update(t)
         ref_left.update(f"@{n.ref}" if n.ref else "")
         # influential · cited-by, centered. Infl in the table's yellow (only when it has data;
@@ -1044,6 +1044,11 @@ class PapersApp(App):
 
     def __init__(self) -> None:
         super().__init__()
+        # Use Textual's ANSI theme so the app follows the terminal's own colour scheme (foot's
+        # wallpaper-driven palette) instead of a fixed design-system palette: fg/bg become the
+        # terminal's, and accents map to the ANSI palette (blue/green/red/yellow). Named colours
+        # in Rich styles (cyan/yellow/green/red) then pass through as ANSI too.
+        self.theme = "ansi-dark"
         self.doi_index: dict[str, Document] = {}
         self.library: list[Node] = []
         self.stack: list[Frame] = []
@@ -1110,7 +1115,7 @@ class PapersApp(App):
 
     def _row_cells(self, n: Node) -> tuple:
         """The six DataTable cells for one node — shared by full render and live append."""
-        style = None if n.in_library else "grey50"
+        style = None if n.in_library else "bright_black"
         t = n.title or "(untitled)"
         if len(t) > 72:
             t = t[:71] + "…"
@@ -1121,7 +1126,7 @@ class PapersApp(App):
         # grey when the content file isn't on disk, else its normal colour (yellow for an
         # influential citation edge, default otherwise).
         if not n.downloaded:
-            glyph_style = "grey50"
+            glyph_style = "bright_black"
         elif n.is_influential:
             glyph_style = "yellow"
         else:

@@ -1007,7 +1007,7 @@ class TopCard(Vertical):
 class PapersApp(App):
     CSS = """
     Screen { layout: vertical; }
-    #card { height: 19; border: round $primary; padding: 0 1; }
+    #card { height: 19; border: round ansi_bright_black; padding: 0 1; }  /* terminal grey, not blue */
     #card.expanded { height: 1fr; }          /* ctrl-d: Details panel fills the screen */
     #card-body { height: 1fr; }              /* metadata + abstract */
     #card-ref { height: 1; }                 /* docked bottom row */

@@ -1014,7 +1014,9 @@ class PapersApp(App):
     #card-ref-left  { width: 1fr; color: $text-muted; }   /* @ref citation key (bottom-left) */
     #card-ref-mid   { width: auto; color: $text-muted; }  /* Cited-by / Infl (centered) */
     #card-ref-right { width: 1fr; }          /* spacer, balances the left so mid is centered */
-    #center { height: 1fr; border: round $accent; }
+    /* terminal grey border (like the card); margin-top:-1 overlaps the card's bottom edge with
+       the center's top edge so the two panels share ONE divider line instead of two. */
+    #center { height: 1fr; border: round ansi_bright_black; margin-top: -1; }
     #center.hidden { display: none; }        /* ctrl-d: table hidden while Details is expanded */
     #status { height: 1; color: $text-muted; padding: 0 1; }
     DataTable > .datatable--cursor { background: $accent; }

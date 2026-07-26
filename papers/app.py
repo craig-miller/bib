@@ -1007,16 +1007,18 @@ class TopCard(Vertical):
 class PapersApp(App):
     CSS = """
     Screen { layout: vertical; }
-    #card { height: 19; border: round ansi_bright_black; padding: 0 1; }  /* terminal grey, not blue */
+    /* no bottom edge on the card so the card and center share ONE divider line (the center's
+       top border) instead of two stacked lines. */
+    #card { height: 19; border: round ansi_bright_black; border-bottom: none; padding: 0 1; }
     #card.expanded { height: 1fr; }          /* ctrl-d: Details panel fills the screen */
     #card-body { height: 1fr; }              /* metadata + abstract */
     #card-ref { height: 1; }                 /* docked bottom row */
     #card-ref-left  { width: 1fr; color: $text-muted; }   /* @ref citation key (bottom-left) */
     #card-ref-mid   { width: auto; color: $text-muted; }  /* Cited-by / Infl (centered) */
     #card-ref-right { width: 1fr; }          /* spacer, balances the left so mid is centered */
-    /* terminal grey border (like the card); margin-top:-1 overlaps the card's bottom edge with
-       the center's top edge so the two panels share ONE divider line instead of two. */
-    #center { height: 1fr; border: round ansi_bright_black; margin-top: -1; }
+    /* border grey = the "dim" shade of the topics values (terminal default fg at reduced
+       intensity). The card has no bottom edge, so this top border is the single shared divider. */
+    #center { height: 1fr; border: round ansi_default 50%; }
     #center.hidden { display: none; }        /* ctrl-d: table hidden while Details is expanded */
     #status { height: 1; color: $text-muted; padding: 0 1; }
     DataTable > .datatable--cursor { background: $accent; }

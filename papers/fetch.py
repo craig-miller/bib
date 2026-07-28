@@ -81,6 +81,11 @@ async def process(client: gc.Client, doc, res, enrich: dict, *, dry_run: bool) -
         for k, v in enrich.items():
             doc[k] = v
         dirty = True
+    # DOI-less papers get no S2 batch record, so no citation count. Fold in the exact
+    # OpenAlex cited-by total we just streamed (node_from_doc reads `cited_by_count`).
+    if not enrich and cited_by:
+        doc["cited_by_count"] = len(cited_by)
+        dirty = True
     if dirty:
         doc.save()
         # refresh the papis cache so a separate reader (the TUI) sees the new keys —
@@ -88,7 +93,9 @@ async def process(client: gc.Client, doc, res, enrich: dict, *, dry_run: bool) -
         papis.database.get().update(doc)
 
     extras = "".join(f"  + info.yaml {x}" for x in (
-        (["enrichment"] if enrich else []) + ([f"clean({','.join(cleaned)})"] if cleaned else [])))
+        (["enrichment"] if enrich else [])
+        + (["oa-cites"] if (not enrich and cited_by) else [])
+        + ([f"clean({','.join(cleaned)})"] if cleaned else [])))
     print(f"  wrote citations.yaml ({len(references)}) + cited-by.yaml ({len(cited_by)}){extras}",
           flush=True)
 

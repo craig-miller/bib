@@ -56,6 +56,21 @@ offered. Override the active style file with `PAPERS_CSL_STYLE=/path/to/style.cs
 The bundled `.csl` files are from the Citation Style Language project and are licensed CC-BY-SA 3.0 —
 see `papers/styles/csl/ATTRIBUTION.md`.
 
+## Acknowledgements
+
+`papers` stands on the work of others, with thanks:
+
+- **[papis](https://github.com/papis/papis)** — the reference manager it is built on. `papers`
+  reads your papis library and config and writes citations and metadata back through papis.
+- **[Semantic Scholar](https://www.semanticscholar.org/)** — citation counts, influential-citation
+  counts, and reference lists, via the Academic Graph API.
+- **[OpenAlex](https://openalex.org/)** — the complete cited-by graph and reference counts for
+  DOI-less papers.
+- **[Crossref](https://www.crossref.org/)** — reference lists and bibliographic metadata.
+- **[citeproc-py](https://github.com/citeproc-py/citeproc-py)** and the
+  **[Citation Style Language](https://citationstyles.org/)** project — in-process CSL rendering
+  and the bundled styles.
+
 ## License
 
 MIT (this project's own code). Bundled CSL styles: CC-BY-SA 3.0 (see attribution above).

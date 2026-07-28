@@ -995,7 +995,7 @@ class TopCard(Vertical):
         cited = fmt_count(n.citation_count) or "-"
         infl_raw = fmt_count(n.influential_count)
         mid = Text()
-        mid.append(infl_raw or "-", style="yellow" if infl_raw else "")
+        mid.append(infl_raw or "-", style="bright_blue" if infl_raw else "")
         mid.append("  ·  ")
         mid.append(cited)
         ref_mid.update(mid)
@@ -1015,10 +1015,11 @@ class PapersApp(App):
     #card-ref-mid   { width: auto; color: $text-muted; }  /* Cited-by / Infl (centered) */
     #card-ref-right { width: 1fr; }          /* spacer, balances the left so mid is centered */
     /* bordered table (dim grey = topics-value shade); the card above stays borderless. */
-    #center { height: 1fr; border: round ansi_default 50%; }
+    #center { height: 1fr; border: round ansi_default 50%; scrollbar-size-vertical: 1;
+              scrollbar-color: ansi_bright_black; scrollbar-background: ansi_default; }
     #center.hidden { display: none; }        /* ctrl-d: table hidden while Details is expanded */
     #status { height: 1; color: $text-muted; padding: 0 1; }
-    DataTable > .datatable--cursor { background: $accent; }
+    DataTable > .datatable--cursor { background: ansi_bright_black; color: ansi_bright_white; }
     /* ANSI theme paints the header on ansi_bright_blue; force dark text so it stays legible
        (terminal default fg is light in dark mode → too low contrast on the bright header). */
     DataTable > .datatable--header { color: ansi_black; }
@@ -1140,9 +1141,9 @@ class PapersApp(App):
             Text(str(n.year or ""), style=style),
             Text(n.first_author, style=style),
             Text(t, style=style),
-            Text(infl, style="yellow" if infl else (style or "dim"), justify="right"),
-            Text(cited, style=style or "dim", justify="right"),
-            Text(refs, style=style or "dim", justify="right"),
+            Text(infl, style="bright_blue" if infl else (style or "bright_black"), justify="right"),
+            Text(cited, style=style or "bright_black", justify="right"),
+            Text(refs, style=style or "bright_black", justify="right"),
         )
 
     def _render_center(self) -> None:

@@ -9,8 +9,13 @@
 # so almost every tick is a sub-millisecond no-op. There is no fixed daily slot to miss,
 # so it is laptop-safe: whenever the machine is on it catches up within 3h of power-on.
 # A failed run does NOT stamp last-run.json, so the next tick retries; notify-send reports
-# the failure to the Noctalia daemon.
+# the failure to the Noctalia daemon. The last successful run's counts live in
+# ~/.config/papers/last-run.json.
+#
+# Output is discarded by default — notify-send surfaces failures and the stamp records the
+# last success, so a persistent log is redundant. To watch a run, invoke it by hand in a
+# terminal, or redirect to tmpfs (self-clearing on reboot): `... --cron >> /tmp/papers-fetch.log 2>&1`.
 PATH=/usr/bin:/bin
 XDG_RUNTIME_DIR=/run/user/1000
 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
-0 */3 * * * /home/craig/.local/share/uv/tools/papers/bin/papers-fetch --cron >> /home/craig/.local/state/papers/fetch.log 2>&1
+0 */3 * * * /home/craig/.local/share/uv/tools/papers/bin/papers-fetch --cron > /dev/null 2>&1

@@ -2,7 +2,7 @@
 """Screenshot the card venue line for several reference types."""
 import asyncio
 import sys
-from papers.app import PapersApp, compose_venue
+from bib.app import BibApp, compose_venue
 
 OUT = "/tmp/pgv"
 
@@ -18,7 +18,7 @@ async def land(pilot, app, ref):
 
 
 async def main() -> None:
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(150, 46)) as pilot:
         await pilot.pause()
         for ref, tag in [("Guttman1984", "proc"), ("Anselin1995", "article"),

@@ -1,7 +1,7 @@
 import asyncio, sys
-from papers.app import PapersApp
+from bib.app import BibApp
 async def main():
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(150, 30)) as pilot:
         await pilot.pause()
         n = app._selected_node()

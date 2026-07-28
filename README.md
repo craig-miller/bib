@@ -1,28 +1,24 @@
-# papers
+# bib
 
-A citation-graph reference-library TUI built on [papis](https://github.com/papis/papis).
+A reference manager tui for [papis](https://github.com/papis/papis).
 
-`papers` is a terminal UI over your papis library: browse your papers in one full-width table,
-walk *into* any paper's citations and references (read from papis sidecars, or fetched live from
-OpenAlex when you step past the edge of your own library), and add / download / open papers without
-leaving the keyboard. A detail card at the top shows the highlighted paper — either in a compact
-structured layout or as a proper CSL-formatted reference in a style of your choice.
+`bib` is a keyboard driven (vim motios inspired) terminal UI over your papis library that helps surface related seminal works. You browse your papers in a table, that shows citions, references, and influence. Automatically fetch related papers metadata (year, author, doi, publisher, abstract, etc) from OpenAlex. If an open paper isn't in your library, you can add / download.
 
 ## Install
 
 ```sh
-uv tool install /path/to/papers
+uv tool install /path/to/bib
 ```
 
 This gives you two commands in an isolated environment (with its own papis):
 
-- `papers` — the TUI
-- `papers-fetch` — headless citation-graph + metadata refresh (cron-friendly): resolves each paper,
+- `bib` — the TUI
+- `bib-fetch` — headless citation-graph + metadata refresh (cron-friendly): resolves each paper,
   writes its `citations.yaml` / `cited-by.yaml` sidecars, folds in Semantic Scholar counts, and cleans
   stored markup. Does not download PDFs (that's the TUI's interactive flow).
   `--ref <REF>` / `--all` / `--dry-run`, or `--cron` — the idempotent daily driver that skips
   unless the last success is >6 days old and notifies (Noctalia) + exits non-zero on failure.
-  See `contrib/papers-fetch.crontab` for a laptop-safe every-3h schedule.
+  See `contrib/bib-fetch.crontab` for a laptop-safe every-3h schedule.
 
 It reads your existing papis library and config (`~/.config/papis/`), so nothing else changes.
 Your own `papis` command is untouched.
@@ -43,24 +39,24 @@ Your own `papis` command is untouched.
 | `ctrl+e` / `ctrl+shift+d` | edit / delete the selected entry |
 | `ctrl+q`, `ctrl+shift+/` | quit · help |
 
-The card mode and chosen CSL style persist in `~/.config/papers/state.json`.
+The card mode and chosen CSL style persist in `~/.config/bib/state.json`.
 
 ## CSL styles
 
-`papers` renders the reference card in-process with [citeproc-py](https://github.com/citeproc-py/citeproc-py)
+`bib` renders the reference card in-process with [citeproc-py](https://github.com/citeproc-py/citeproc-py)
 (CSL 1.0.1). It bundles the subset of the styles [Typst](https://typst.app) ships that citeproc-py can
 render, named by their CSL id so they match Typst's `#bibliography(style: …)`. Styles that rely on
 CSL 1.0.2 features (APA, MLA, Chicago author-date, …) are not renderable by citeproc-py and so aren't
-offered. Override the active style file with `PAPERS_CSL_STYLE=/path/to/style.csl`.
+offered. Override the active style file with `BIB_CSL_STYLE=/path/to/style.csl`.
 
 The bundled `.csl` files are from the Citation Style Language project and are licensed CC-BY-SA 3.0 —
-see `papers/styles/csl/ATTRIBUTION.md`.
+see `bib/styles/csl/ATTRIBUTION.md`.
 
 ## Acknowledgements
 
-`papers` stands on the work of others, with thanks:
+`bib` stands on the work of others, with thanks:
 
-- **[papis](https://github.com/papis/papis)** — the reference manager it is built on. `papers`
+- **[papis](https://github.com/papis/papis)** — the reference manager it is built on. `bib`
   reads your papis library and config and writes citations and metadata back through papis.
 - **[Semantic Scholar](https://www.semanticscholar.org/)** — citation counts, influential-citation
   counts, and reference lists, via the Academic Graph API.

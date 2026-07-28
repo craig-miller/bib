@@ -12,9 +12,9 @@ title match, so the whole library is fetchable — not just the DOI-bearing half
 `save_cited_by()` in papis 0.15.0 is bugged (writes the citations file); we bypass it and
 write cited-by directly via get_cited_by_file() + list_to_path().
 
-    papers-fetch --ref Anselin1995        # one paper
-    papers-fetch --all --dry-run          # whole library, no writes
-    papers-fetch --cron                   # idempotent daily driver (see cron_main)
+    bib-fetch --ref Anselin1995        # one paper
+    bib-fetch --all --dry-run          # whole library, no writes
+    bib-fetch --cron                   # idempotent daily driver (see cron_main)
 
 Exit code is meaningful: 0 iff every resolvable paper was written AND S2 enrichment
 succeeded; 1 if any paper errored or the S2 batch failed (an unresolved paper — no
@@ -41,7 +41,7 @@ from . import core as gc
 # --cron state: skip a run if the last SUCCESS is younger than this. Cron ticks far more
 # often than this (every few hours) so a laptop that misses its slot catches up on the
 # next power-on, and a failed run — which does NOT stamp — retries at the next tick.
-_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "papers"
+_CONFIG_DIR = Path(os.environ.get("XDG_CONFIG_HOME") or (Path.home() / ".config")) / "bib"
 _STAMP = _CONFIG_DIR / "last-run.json"
 _MIN_INTERVAL = timedelta(days=6)
 
@@ -224,11 +224,11 @@ def cron_main() -> int:
         last = datetime.fromisoformat(stamp["last_success"])
         age = now - last
         if age < _MIN_INTERVAL:
-            print(f"papers-fetch --cron: last success {age.days}d ago "
+            print(f"bib-fetch --cron: last success {age.days}d ago "
                   f"(< {_MIN_INTERVAL.days}d) — skipping", flush=True)
             return 0
     except (FileNotFoundError, KeyError, ValueError) as e:
-        print(f"papers-fetch --cron: no valid stamp ({e}) — running", flush=True)
+        print(f"bib-fetch --cron: no valid stamp ({e}) — running", flush=True)
 
     summary = asyncio.run(amain(None, do_all=True, dry_run=False))
 
@@ -236,8 +236,8 @@ def cron_main() -> int:
         body = (f"{summary['failed']} paper(s) failed"
                 + ("" if summary["s2_ok"] else "; S2 enrichment failed")
                 + " — will retry next tick")
-        _notify("papers-fetch failed", body)
-        print(f"papers-fetch --cron: FAILURE ({body}); not stamped", file=sys.stderr)
+        _notify("bib-fetch failed", body)
+        print(f"bib-fetch --cron: FAILURE ({body}); not stamped", file=sys.stderr)
         return 1
 
     _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
@@ -246,7 +246,7 @@ def cron_main() -> int:
         "processed": summary["processed"], "unresolved": summary["unresolved"],
         "openalex": summary["openalex"], "s2": summary["s2"],
     }, indent=2))
-    print(f"papers-fetch --cron: success — {summary['processed']} written, stamped", flush=True)
+    print(f"bib-fetch --cron: success — {summary['processed']} written, stamped", flush=True)
     return 0
 
 

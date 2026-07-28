@@ -1,21 +1,21 @@
-# papers-fetch — refresh the papers citation graph + counts (user crontab).
+# bib-fetch — refresh the papers citation graph + counts (user crontab).
 #
 # Install (needs craig in the `cron` group — see cronbase: `sudo usermod -aG cron craig`,
 # then re-login so the group takes effect):
-#     crontab ~/src/papers/contrib/papers-fetch.crontab
+#     crontab ~/src/papers/contrib/bib-fetch.crontab
 #     crontab -l          # verify
 #
-# Ticks every 3h, but `papers-fetch --cron` skips unless the last success is >6 days old,
+# Ticks every 3h, but `bib-fetch --cron` skips unless the last success is >6 days old,
 # so almost every tick is a sub-millisecond no-op. There is no fixed daily slot to miss,
 # so it is laptop-safe: whenever the machine is on it catches up within 3h of power-on.
 # A failed run does NOT stamp last-run.json, so the next tick retries; notify-send reports
 # the failure to the Noctalia daemon. The last successful run's counts live in
-# ~/.config/papers/last-run.json.
+# ~/.config/bib/last-run.json.
 #
 # Output is discarded by default — notify-send surfaces failures and the stamp records the
 # last success, so a persistent log is redundant. To watch a run, invoke it by hand in a
-# terminal, or redirect to tmpfs (self-clearing on reboot): `... --cron >> /tmp/papers-fetch.log 2>&1`.
+# terminal, or redirect to tmpfs (self-clearing on reboot): `... --cron >> /tmp/bib-fetch.log 2>&1`.
 PATH=/usr/bin:/bin
 XDG_RUNTIME_DIR=/run/user/1000
 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
-0 */3 * * * /home/craig/.local/share/uv/tools/papers/bin/papers-fetch --cron > /dev/null 2>&1
+0 */3 * * * /home/craig/.local/share/uv/tools/bib/bin/bib-fetch --cron > /dev/null 2>&1

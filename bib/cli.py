@@ -8,12 +8,12 @@ from __future__ import annotations
 
 def main() -> None:
     """`papers` — launch the citation-graph TUI."""
-    from .app import PapersApp
-    PapersApp().run()
+    from .app import BibApp
+    BibApp().run()
 
 
 def fetch_main() -> None:
-    """`papers-fetch` — headless citation-graph + metadata refresh for the library (cron-friendly).
+    """`bib-fetch` — headless citation-graph + metadata refresh for the library (cron-friendly).
 
     Resolves each paper and writes its citations.yaml / cited-by.yaml sidecars, folds in Semantic
     Scholar counts, and cleans stored markup in info.yaml. Does NOT download PDFs (that's the TUI).

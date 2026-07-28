@@ -3,13 +3,13 @@
 import asyncio
 import sys
 
-from papers.app import PapersApp
+from bib.app import BibApp
 
 OUT = "/tmp/pga"
 
 
 async def main() -> None:
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(170, 46)) as pilot:
         await pilot.pause()
         # land on Egenhofer1991 (library, has DOI) and wait for lazy topics/keywords

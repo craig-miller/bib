@@ -135,11 +135,11 @@ def _pass_token(env_var: str, pass_path: str) -> str | None:
 
 
 def _s2_key() -> str | None:
-    return _pass_token("GRAPH_S2_KEY", "api/semanticscholar/token")
+    return _pass_token("BIB_S2_KEY", "api/semanticscholar/token")
 
 
 def _kagi_token() -> str | None:
-    return _pass_token("GRAPH_KAGI_KEY", "api/kagi/token")
+    return _pass_token("BIB_KAGI_KEY", "api/kagi/token")
 
 
 # --------------------------------------------------------------------------- #

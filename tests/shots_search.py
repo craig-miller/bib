@@ -4,7 +4,7 @@ and lets the background worker query OpenAlex (whole corpus) → grey results Fr
 import asyncio
 import sys
 
-from papers.app import PapersApp
+from bib.app import BibApp
 
 OUT = "/tmp/pgs"
 
@@ -29,7 +29,7 @@ async def do_search(pilot, app, text, tag, settle=3.0):
 
 
 async def main() -> None:
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(170, 46)) as pilot:
         await pilot.pause()
         await do_search(pilot, app, "author max egenhofer", "author")

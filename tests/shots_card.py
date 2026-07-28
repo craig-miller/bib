@@ -1,7 +1,7 @@
 import asyncio, sys
-from papers.app import PapersApp
+from bib.app import BibApp
 async def main():
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(150, 46)) as pilot:
         await pilot.pause()
         target = sys.argv[1] if len(sys.argv) > 1 else "Anselin1995"

@@ -3,9 +3,9 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "papers"
+name = "bib"
 version = "0.1.0"
-description = "A citation-graph reference-library TUI built on papis"
+description = "A reference manager TUI for papis"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -21,12 +21,12 @@ dependencies = [
 ]
 
 [project.scripts]
-papers = "papers.cli:main"
-papers-fetch = "papers.cli:fetch_main"
+bib = "bib.cli:main"
+bib-fetch = "bib.cli:fetch_main"
 
 [tool.hatch.build.targets.wheel]
 # Non-.py files inside the package (styles/csl/*.csl + ATTRIBUTION.md) are included automatically.
-packages = ["papers"]
+packages = ["bib"]
 
 [tool.hatch.build.targets.sdist]
-include = ["papers", "tests", "README.md", "LICENSE"]
+include = ["bib", "tests", "README.md", "LICENSE"]

@@ -4,13 +4,13 @@ pilot and exports SVG snapshots at key UI states. No live terminal needed."""
 import asyncio
 import sys
 
-from papers.app import PapersApp
+from bib.app import BibApp
 
 OUT = "/tmp/pg"
 
 
 async def main() -> None:
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(170, 46)) as pilot:
         await pilot.pause()
 

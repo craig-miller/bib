@@ -751,14 +751,14 @@ class StyleScreen(ModalScreen["str | None"]):
 # subset of Typst's bundled CSL styles that citeproc-py 0.10 (CSL 1.0.1) can render — sourced via
 # citeproc-py-styles, validated at build time. Named by their CSL id so they match Typst's
 # `#bibliography(style: …)` names. The active style + the ctrl-s mode persist in the papers config;
-# ctrl-y opens the picker. PAPERS_CSL_STYLE (or legacy PAPIS_GRAPH_CSL_STYLE) overrides.
+# ctrl-y opens the picker. BIB_CSL_STYLE (or legacy PAPIS_GRAPH_CSL_STYLE) overrides.
 _STYLE_DIR = os.fspath(importlib.resources.files(__package__) / "styles" / "csl")
 _DEFAULT_STYLE_ID = "taylor-and-francis-harvard-x"
 
 # Small persisted UI state (CSL mode + chosen style), so choices survive a restart. papers owns its
 # own config dir; best-effort (never fatal). Migrates once from the old papis-config location.
 _CONFIG_DIR = os.path.join(
-    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "papers")
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "bib")
 _STATE_PATH = os.path.join(_CONFIG_DIR, "state.json")
 _OLD_STATE_PATH = os.path.join(papis.config.get_config_folder(), "graph-state.json")
 
@@ -786,7 +786,7 @@ def _save_state(**kw: Any) -> None:
 
 def _style_path() -> str:
     """Absolute path to the active CSL style: env override → chosen id in the bundle → default."""
-    env = os.environ.get("PAPERS_CSL_STYLE") or os.environ.get("PAPIS_GRAPH_CSL_STYLE")
+    env = os.environ.get("BIB_CSL_STYLE") or os.environ.get("PAPIS_GRAPH_CSL_STYLE")
     if env:
         return env
     sid = _load_state().get("csl_style") or _DEFAULT_STYLE_ID
@@ -1004,7 +1004,7 @@ class TopCard(Vertical):
 # --------------------------------------------------------------------------- #
 # app                                                                          #
 # --------------------------------------------------------------------------- #
-class PapersApp(App):
+class BibApp(App):
     CSS = """
     Screen { layout: vertical; }
     #card { height: 19; padding: 0 1; }                    /* borderless — no box-drawing lines */
@@ -1615,4 +1615,4 @@ class PapersApp(App):
 
 
 if __name__ == "__main__":
-    PapersApp().run()
+    BibApp().run()

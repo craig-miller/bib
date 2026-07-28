@@ -6,7 +6,7 @@ Real network from zentoo; we sleep to let pages arrive."""
 import asyncio
 import sys
 
-from papers.app import PapersApp
+from bib.app import BibApp
 
 OUT = "/tmp/pgl"
 
@@ -22,7 +22,7 @@ async def land_on(pilot, app, ref):
 
 
 async def main() -> None:
-    app = PapersApp()
+    app = BibApp()
     async with app.run_test(size=(170, 46)) as pilot:
         await pilot.pause()
 

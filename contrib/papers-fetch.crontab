@@ -1,0 +1,16 @@
+# papers-fetch — refresh the papers citation graph + counts (user crontab).
+#
+# Install (needs craig in the `cron` group — see cronbase: `sudo usermod -aG cron craig`,
+# then re-login so the group takes effect):
+#     crontab ~/src/papers/contrib/papers-fetch.crontab
+#     crontab -l          # verify
+#
+# Ticks every 3h, but `papers-fetch --cron` skips unless the last success is >6 days old,
+# so almost every tick is a sub-millisecond no-op. There is no fixed daily slot to miss,
+# so it is laptop-safe: whenever the machine is on it catches up within 3h of power-on.
+# A failed run does NOT stamp last-run.json, so the next tick retries; notify-send reports
+# the failure to the Noctalia daemon.
+PATH=/usr/bin:/bin
+XDG_RUNTIME_DIR=/run/user/1000
+DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus
+0 */3 * * * /home/craig/.local/share/uv/tools/papers/bin/papers-fetch --cron >> /home/craig/.local/state/papers/fetch.log 2>&1

@@ -19,7 +19,10 @@ This gives you two commands in an isolated environment (with its own papis):
 - `papers` — the TUI
 - `papers-fetch` — headless citation-graph + metadata refresh (cron-friendly): resolves each paper,
   writes its `citations.yaml` / `cited-by.yaml` sidecars, folds in Semantic Scholar counts, and cleans
-  stored markup. Does not download PDFs (that's the TUI's interactive flow). `--ref <REF>` / `--all` / `--dry-run`.
+  stored markup. Does not download PDFs (that's the TUI's interactive flow).
+  `--ref <REF>` / `--all` / `--dry-run`, or `--cron` — the idempotent daily driver that skips
+  unless the last success is >6 days old and notifies (Noctalia) + exits non-zero on failure.
+  See `contrib/papers-fetch.crontab` for a laptop-safe every-3h schedule.
 
 It reads your existing papis library and config (`~/.config/papis/`), so nothing else changes.
 Your own `papis` command is untouched.

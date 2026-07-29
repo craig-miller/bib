@@ -2,7 +2,7 @@
 
 A reference manager tui for [papis](https://github.com/papis/papis).
 
-`bib` is a keyboard driven (vim motios inspired) terminal UI over your papis library that helps surface related seminal works. You browse your papers in a table, that shows citions, references, and influence. Automatically fetch related papers metadata (year, author, doi, publisher, abstract, etc) from OpenAlex. If an open paper isn't in your library, you can add / download.
+`bib` is a keyboard driven (vim motions inspired) terminal UI over your papis library that helps surface related seminal works. You browse your papers in a table, that shows citations, references, and influence. Automatically fetch related papers' metadata (year, author, doi, publisher, abstract, etc) from OpenAlex. If a paper isn't in your library, you can add / download it.
 
 ## Install
 

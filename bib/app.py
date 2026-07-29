@@ -1005,6 +1005,7 @@ class TopCard(Vertical):
 # app                                                                          #
 # --------------------------------------------------------------------------- #
 class BibApp(App):
+    TITLE = "bib"
     CSS = """
     Screen { layout: vertical; }
     #card { height: 19; padding: 0 1; }                    /* borderless — no box-drawing lines */

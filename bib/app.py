@@ -11,7 +11,7 @@ Navigation:
   ctrl-c  citations of selected → table     ctrl-o / esc  back
   ctrl-r  references of selected → table     ctrl-i        forward
   ctrl-p  Papers (home)                      ctrl-/        search whole corpus (popup)
-  type    fuzzy-filter · #kw keyword         ctrl-shift-/  help popup
+  type    fuzzy-filter · #tag tag-filter         ctrl-shift-/  help popup
   enter   open (in-library+PDF) · fetch PDF · add+fetch (grey)   ctrl-q  quit
 
 Grey rows = known-but-not-in-library (rendered dim). Promoting into a grey row has no
@@ -221,6 +221,19 @@ def _is_downloaded(doc: Document | None) -> bool:
     return bool(doc is not None and any(os.path.exists(f) for f in doc.get_files()))
 
 
+def doc_tags(doc: Document | None) -> list[str]:
+    """A library entry's user tags as a clean list. papis stores `tags` as a YAML list, but
+    tolerate a legacy space/comma-separated string too."""
+    if doc is None:
+        return []
+    raw = doc.get("tags")
+    if not raw:
+        return []
+    if isinstance(raw, str):
+        return [t for t in raw.replace(",", " ").split() if t]
+    return [str(t) for t in raw]
+
+
 def _open_file(path: str) -> None:
     """Open a file with the papis-configured opener (zathura for PDFs via xdg-open), detached
     so the GUI viewer lives independently of the TUI — no terminal handoff needed."""
@@ -396,6 +409,7 @@ HELP_LINES = [
     ("^s", "CSL / plain toggle"),
     ("^y", "Pick CSL style"),
     ("^e", "Edit entry (info.yaml)"),
+    ("^t", "Tags (add · remove)"),
     ("⇧^d", "Delete entry"),
     ("enter", "open · fetch PDF · add"),
     ("^q", "Quit"),
@@ -737,6 +751,108 @@ class StyleScreen(ModalScreen["str | None"]):
 
 
 # --------------------------------------------------------------------------- #
+# tag picker — add / remove / create tags on a library entry (ctrl-t)          #
+# --------------------------------------------------------------------------- #
+class TagScreen(ModalScreen["list[str] | None"]):
+    """Add/remove tags on a library entry. Filter-as-you-type over the library's tag
+    vocabulary; ↑/↓ move, enter toggles the highlighted tag (or, when your typed text
+    matches no existing tag, creates it and adds it). esc commits the selection and closes —
+    the caller writes it to info.yaml."""
+    CSS = """
+    TagScreen { align: center middle; background: $background 60%; }
+    #tag-box { width: 60%; height: 70%; border: round $primary;
+               background: $surface; padding: 0 1; }
+    #tag-title { color: $accent; }
+    #tag-hint  { color: $text-muted; }
+    #tag-table { height: 1fr; }
+    #tag-table > .datatable--cursor { background: $accent; }
+    """
+    BINDINGS = [
+        Binding("escape", "done", "save"),
+        Binding("down", "cursor_down", show=False),
+        Binding("up", "cursor_up", show=False),
+        Binding("enter", "choose", show=False),
+    ]
+
+    def __init__(self, vocabulary: list[str], current: set[str]) -> None:
+        super().__init__()
+        self._vocab = sorted(set(vocabulary))
+        self._selected = set(current)
+        self._filtered: list[tuple[str, str]] = []   # (kind, value); kind in {"tag","create"}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="tag-box"):
+            yield Static("Tags — enter toggles · type a new name to create", id="tag-title")
+            yield Input(placeholder="filter tags · type a new tag…", id="tag-q")
+            yield DataTable(id="tag-table", cursor_type="row", zebra_stripes=True)
+            yield Static("↑/↓ move · enter toggle/create · esc save", id="tag-hint")
+
+    def on_mount(self) -> None:
+        t = self.query_one("#tag-table", DataTable)
+        t.add_column("Tag", key="tag")
+        self._fill("")
+        self.query_one("#tag-q", Input).focus()
+
+    def _fill(self, needle: str) -> None:
+        t = self.query_one("#tag-table", DataTable)
+        t.clear()
+        self._filtered.clear()
+        needle = needle.strip()
+        low = needle.lower()
+        # a "create" row when the typed text is a tag that doesn't exist yet
+        if needle and low not in (v.lower() for v in self._vocab):
+            t.add_row(Text(f"＋ create “{needle}”", style="green"),
+                      key=f"__create__{needle}")
+            self._filtered.append(("create", needle))
+        for tag in self._vocab:
+            if low and low not in tag.lower():
+                continue
+            on = tag in self._selected
+            t.add_row(Text(("● " if on else "  ") + tag,
+                           style="bright_blue" if on else "dim"), key=tag)
+            self._filtered.append(("tag", tag))
+        if self._filtered:
+            t.move_cursor(row=0)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        self._fill(event.value)
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Focus is on the filter Input, so Enter arrives here (the screen `enter` never fires).
+        event.stop()
+        self.action_choose()
+
+    def action_cursor_down(self) -> None:
+        self.query_one("#tag-table", DataTable).action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.query_one("#tag-table", DataTable).action_cursor_up()
+
+    def action_choose(self) -> None:
+        t = self.query_one("#tag-table", DataTable)
+        i = t.cursor_row
+        if i is None or not (0 <= i < len(self._filtered)):
+            self.bell()
+            return
+        kind, value = self._filtered[i]
+        if kind == "create":
+            self._vocab = sorted(set(self._vocab) | {value})
+            self._selected.add(value)
+            self.query_one("#tag-q", Input).value = ""   # clears filter (refills via on_changed)
+            self._fill("")
+        else:
+            self._selected.discard(value) if value in self._selected else self._selected.add(value)
+            self._fill(self.query_one("#tag-q", Input).value)
+            for idx, (k, v) in enumerate(self._filtered):   # keep cursor on the toggled tag
+                if k == "tag" and v == value:
+                    t.move_cursor(row=idx)
+                    break
+
+    def action_done(self) -> None:
+        self.dismiss(sorted(self._selected))
+
+
+# --------------------------------------------------------------------------- #
 # top card — metadata for the highlighted node                                 #
 # --------------------------------------------------------------------------- #
 # --------------------------------------------------------------------------- #
@@ -967,8 +1083,12 @@ class TopCard(Vertical):
         if rows is None:                          # normal mode, or CSL render unavailable
             t = Text()
             rows = self._normal_head(t, n)
-        if n.topics or n.keywords:
+        tags = doc_tags(n.doc)
+        if tags or n.topics or n.keywords:
             t.append("\n")                        # blank line: separate head from Topics/Keywords
+            rows += 1
+        if tags:
+            self._line(t, "Tags", tags, "bright_blue")   # your own tags — accent, not muted
             rows += 1
         if n.topics:
             self._line(t, "Topics", n.topics, "dim")   # muted, like the abstract (no highlight)
@@ -1041,6 +1161,7 @@ class BibApp(App):
         Binding("ctrl+s", "toggle_csl", "CSL ref"),
         Binding("ctrl+y", "pick_style", "Style"),
         Binding("ctrl+e", "edit", "Edit entry"),
+        Binding("ctrl+t", "tags", "Tags"),
         Binding("ctrl+shift+d", "delete", "Delete entry"),
         Binding("ctrl+q", "quit", "Quit"),           # plain 'q' is a filter character (on_key)
         Binding("ctrl+question_mark", "help", "Help"),
@@ -1110,10 +1231,14 @@ class BibApp(App):
         if not buf:
             return nodes
         if buf.startswith("#"):
-            kw = buf[1:].lower()
-            return [n for n in nodes
-                    if kw in (str(n.doc.get("tags", "")).lower() if n.doc else "")
-                    or kw in n.title.lower()]
+            # tag filter: `#a #b` -> entries whose tags contain a prefix-match for EVERY token
+            wanted = [w for w in (tok.lstrip("#").lower() for tok in buf.split()) if w]
+            if not wanted:
+                return nodes
+            def _match(n: Node) -> bool:
+                tags = [t.lower() for t in doc_tags(n.doc)]
+                return all(any(t.startswith(w) for t in tags) for w in wanted)
+            return [n for n in nodes if _match(n)]
         from rapidfuzz import fuzz
         scored = [(fuzz.partial_ratio(buf.lower(), f"{n.title} {n.author}".lower()), n)
                   for n in nodes]
@@ -1344,6 +1469,57 @@ class BibApp(App):
             self.doi_index[n.doi] = fresh
         self._render_center()
         self.notify(f"updated @{n.ref}")
+
+    def action_tags(self) -> None:
+        """ctrl-t: add/remove tags on the selected library entry via a toggle picker. Only for
+        in-library papers; grey nodes have no info.yaml to tag."""
+        n = self._selected_node()
+        if n is None or not n.in_library or n.doc is None:
+            self.bell()
+            return
+        self._tags_worker(n)
+
+    def _library_tags(self) -> list[str]:
+        """Every distinct tag currently in the library — the picker's vocabulary."""
+        seen: set[str] = set()
+        for x in self.library:
+            seen.update(doc_tags(x.doc))
+        return sorted(seen)
+
+    @work(group="tags")
+    async def _tags_worker(self, n: Node) -> None:
+        chosen = await self.push_screen_wait(
+            TagScreen(self._library_tags(), set(doc_tags(n.doc))))
+        if chosen is None:
+            return
+        new = sorted(set(chosen))
+        if new == sorted(doc_tags(n.doc)):
+            return                                # unchanged — nothing to write
+        folder = n.doc.get_main_folder()
+        if new:
+            n.doc["tags"] = new
+        elif "tags" in n.doc:
+            del n.doc["tags"]
+        try:
+            n.doc.save()
+        except Exception as e:                    # noqa: BLE001
+            self.notify(f"tag save failed: {e}", severity="error")
+            return
+        # reload from disk + copy the fresh doc onto EVERY node pointing at this paper
+        # (Home list + all frames), exactly like the edit path.
+        fresh = papis.document.from_folder(folder)
+        papis.database.get().update(fresh)
+        updated = node_from_doc(fresh)
+        for lst in [self.library, *(fr.nodes for fr in self.stack)]:
+            for x in lst:
+                if x.doc is not None and x.doc.get_main_folder() == folder:
+                    for f in fields(Node):
+                        setattr(x, f.name, getattr(updated, f.name))
+        if n.doi:
+            self.doi_index[n.doi] = fresh
+        self._render_center()
+        self._update_card()
+        self.notify(f"tags: {' '.join(new) if new else '—'}")
 
     def action_delete(self) -> None:
         """⇧ctrl-d: delete the selected library entry — its folder, PDF, notes, everything —

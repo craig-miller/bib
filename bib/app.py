@@ -768,24 +768,26 @@ class TagScreen(ModalScreen["list[str] | None"]):
     #tag-table > .datatable--cursor { background: $accent; }
     """
     BINDINGS = [
-        Binding("escape", "done", "save"),
+        Binding("escape", "close", "close"),
         Binding("down", "cursor_down", show=False),
         Binding("up", "cursor_up", show=False),
         Binding("enter", "choose", show=False),
     ]
 
-    def __init__(self, vocabulary: list[str], current: set[str]) -> None:
+    def __init__(self, vocabulary: list[str], current: set[str], on_change) -> None:
         super().__init__()
         self._vocab = sorted(set(vocabulary))
         self._selected = set(current)
+        self._apply = on_change      # called with the new tag list after every toggle (live save)
         self._filtered: list[tuple[str, str]] = []   # (kind, value); kind in {"tag","create"}
 
     def compose(self) -> ComposeResult:
         with Vertical(id="tag-box"):
-            yield Static("Tags — enter toggles · type a new name to create", id="tag-title")
+            yield Static("Tags — enter toggles (saves) · type a new name to create",
+                         id="tag-title")
             yield Input(placeholder="filter tags · type a new tag…", id="tag-q")
             yield DataTable(id="tag-table", cursor_type="row", zebra_stripes=True)
-            yield Static("↑/↓ move · enter toggle/create · esc save", id="tag-hint")
+            yield Static("↑/↓ move · enter toggle/create (saves) · esc close", id="tag-hint")
 
     def on_mount(self) -> None:
         t = self.query_one("#tag-table", DataTable)
@@ -847,9 +849,10 @@ class TagScreen(ModalScreen["list[str] | None"]):
                 if k == "tag" and v == value:
                     t.move_cursor(row=idx)
                     break
+        self._apply(sorted(self._selected))     # live save — every toggle/create persists now
 
-    def action_done(self) -> None:
-        self.dismiss(sorted(self._selected))
+    def action_close(self) -> None:
+        self.dismiss(None)                      # esc just closes; nothing pending to persist
 
 
 # --------------------------------------------------------------------------- #
@@ -1471,13 +1474,17 @@ class BibApp(App):
         self.notify(f"updated @{n.ref}")
 
     def action_tags(self) -> None:
-        """ctrl-t: add/remove tags on the selected library entry via a toggle picker. Only for
-        in-library papers; grey nodes have no info.yaml to tag."""
+        """ctrl-t: add/remove tags on the selected library entry via a toggle picker. Every
+        toggle saves immediately; esc just closes. Only for in-library papers; grey nodes have
+        no info.yaml to tag."""
         n = self._selected_node()
         if n is None or not n.in_library or n.doc is None:
             self.bell()
             return
-        self._tags_worker(n)
+        self.push_screen(
+            TagScreen(self._library_tags(), set(doc_tags(n.doc)),
+                      on_change=lambda tags: self._apply_tags(n, tags)),
+            lambda _r: self._render_center())     # one refresh once the picker closes
 
     def _library_tags(self) -> list[str]:
         """Every distinct tag currently in the library — the picker's vocabulary."""
@@ -1486,16 +1493,14 @@ class BibApp(App):
             seen.update(doc_tags(x.doc))
         return sorted(seen)
 
-    @work(group="tags")
-    async def _tags_worker(self, n: Node) -> None:
-        chosen = await self.push_screen_wait(
-            TagScreen(self._library_tags(), set(doc_tags(n.doc))))
-        if chosen is None:
-            return
-        new = sorted(set(chosen))
+    def _apply_tags(self, n: Node, tags: list[str]) -> None:
+        """Live-write `tags` onto n's entry from the picker (one toggle = one save). The in-
+        library nodes for a paper share a single papis doc object, so mutating it in place
+        propagates to every view; we persist to info.yaml and refresh the search index. The
+        visible table/card re-render once, when the picker closes (see action_tags callback)."""
+        new = sorted(set(tags))
         if new == sorted(doc_tags(n.doc)):
-            return                                # unchanged — nothing to write
-        folder = n.doc.get_main_folder()
+            return                                # no change — skip the write
         if new:
             n.doc["tags"] = new
         elif "tags" in n.doc:
@@ -1505,21 +1510,7 @@ class BibApp(App):
         except Exception as e:                    # noqa: BLE001
             self.notify(f"tag save failed: {e}", severity="error")
             return
-        # reload from disk + copy the fresh doc onto EVERY node pointing at this paper
-        # (Home list + all frames), exactly like the edit path.
-        fresh = papis.document.from_folder(folder)
-        papis.database.get().update(fresh)
-        updated = node_from_doc(fresh)
-        for lst in [self.library, *(fr.nodes for fr in self.stack)]:
-            for x in lst:
-                if x.doc is not None and x.doc.get_main_folder() == folder:
-                    for f in fields(Node):
-                        setattr(x, f.name, getattr(updated, f.name))
-        if n.doi:
-            self.doi_index[n.doi] = fresh
-        self._render_center()
-        self._update_card()
-        self.notify(f"tags: {' '.join(new) if new else '—'}")
+        papis.database.get().update(n.doc)
 
     def action_delete(self) -> None:
         """⇧ctrl-d: delete the selected library entry — its folder, PDF, notes, everything —

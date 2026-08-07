@@ -56,6 +56,7 @@ import papis.commands.add
 import papis.commands.addto
 import papis.commands.rm
 import papis.document
+import papis.notes
 from papis.document import Document
 
 from . import core as gc
@@ -409,6 +410,7 @@ HELP_LINES = [
     ("^s", "CSL / plain toggle"),
     ("^y", "Pick CSL style"),
     ("^e", "Edit entry (info.yaml)"),
+    ("^n", "Open notes"),
     ("^t", "Tags (add · remove)"),
     ("⇧^d", "Delete entry"),
     ("enter", "open · fetch PDF · add"),
@@ -1164,6 +1166,7 @@ class BibApp(App):
         Binding("ctrl+s", "toggle_csl", "CSL ref"),
         Binding("ctrl+y", "pick_style", "Style"),
         Binding("ctrl+e", "edit", "Edit entry"),
+        Binding("ctrl+n", "notes", "Notes"),
         Binding("ctrl+t", "tags", "Tags"),
         Binding("ctrl+shift+d", "delete", "Delete entry"),
         Binding("ctrl+q", "quit", "Quit"),           # plain 'q' is a filter character (on_key)
@@ -1472,6 +1475,32 @@ class BibApp(App):
             self.doi_index[n.doi] = fresh
         self._render_center()
         self.notify(f"updated @{n.ref}")
+
+    def action_notes(self) -> None:
+        """ctrl-n: open the selected library entry's notes file in $EDITOR, creating it from the
+        papis notes-template if it doesn't exist yet. Only for in-library papers; grey nodes have
+        no folder to hold a note."""
+        n = self._selected_node()
+        if n is None or not n.in_library or n.doc is None:
+            self.bell()
+            return
+        self._notes_worker(n)
+
+    @work(group="notes")
+    async def _notes_worker(self, n: Node) -> None:
+        try:
+            notepath = papis.notes.notes_path_ensured(n.doc)   # renders template if absent
+        except Exception as e:                       # noqa: BLE001
+            self.notify(f"notes failed: {e}", severity="error")
+            return
+        editor = os.environ.get("EDITOR") or "vi"
+        try:
+            with self.suspend():                     # hand the terminal to the editor
+                subprocess.run([editor, notepath])
+        except Exception as e:                       # noqa: BLE001
+            self.notify(f"notes failed: {e}", severity="error")
+            return
+        self.notify(f"notes @{n.ref}")
 
     def action_tags(self) -> None:
         """ctrl-t: add/remove tags on the selected library entry via a toggle picker. Every

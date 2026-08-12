@@ -1488,11 +1488,22 @@ class BibApp(App):
 
     @work(group="notes")
     async def _notes_worker(self, n: Node) -> None:
+        # Refresh n.doc from info.yaml before asking papis for the notes path:
+        # papis.notes.notes_path reads doc["notes"], and n.doc is a snapshot from
+        # library-load time. Without this, an externally-edited notes filename
+        # (or one written back by a previous notes_path_ensured call) is missed.
+        folder = n.doc.get_main_folder()
         try:
+            if folder:
+                n.doc = papis.document.from_folder(folder)
             notepath = papis.notes.notes_path_ensured(n.doc)   # renders template if absent
         except Exception as e:                       # noqa: BLE001
             self.notify(f"notes failed: {e}", severity="error")
             return
+        # notes_path may have set doc["notes"] and written info.yaml; keep the
+        # SQLite cache in step so external queries see the same filename.
+        if folder:
+            papis.database.get().update(n.doc)
         editor = os.environ.get("EDITOR") or "vi"
         try:
             with self.suspend():                     # hand the terminal to the editor

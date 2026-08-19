@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Screenshot harness for Phase-2 search popup. Opens ctrl-/ , types a query, submits,
+"""Screenshot harness for the Find-papers popup. Opens `f`, types a query, submits,
 and lets the background worker query OpenAlex (whole corpus) → grey results Frame."""
 import asyncio
 import sys
@@ -10,7 +10,7 @@ OUT = "/tmp/pgs"
 
 
 async def do_search(pilot, app, text, tag, settle=3.0):
-    await pilot.press("ctrl+underscore")     # ctrl-/ opens the popup (0x1f encoding)
+    await pilot.press("f")                    # opens the Find-papers popup
     await pilot.pause()
     for ch in text:
         await pilot.press(ch if ch != " " else "space")
@@ -24,7 +24,7 @@ async def do_search(pilot, app, text, tag, settle=3.0):
     f = app._current()
     print(f"[{tag}] {text!r} -> title={f.title!r} nodes={len(f.nodes)} "
           f"total={f.total} loading={f.loading}", file=sys.stderr)
-    await pilot.press("ctrl+p")              # home between searches
+    await pilot.press("ctrl+o")              # back to library between searches
     await pilot.pause()
 
 

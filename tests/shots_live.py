@@ -16,7 +16,7 @@ async def land_on(pilot, app, ref):
         n = app._selected_node()
         if n and n.ref == ref:
             return True
-        await pilot.press("down")
+        await pilot.press("j")
         await pilot.pause()
     return False
 
@@ -33,7 +33,7 @@ async def main() -> None:
             print("no library paper has a cited-by sidecar", file=sys.stderr)
             return
         await land_on(pilot, app, subject)
-        await pilot.press("ctrl+c")          # citations of subject → grey rows
+        await pilot.press("c")          # citations of subject → grey rows
         await pilot.pause()
         app.save_screenshot(f"{OUT}_1_citations.svg")
 
@@ -45,13 +45,13 @@ async def main() -> None:
             print("no fetchable grey child", file=sys.stderr)
             return
         for _ in range(gi):
-            await pilot.press("down")
+            await pilot.press("j")
         await pilot.pause()
         print(f"grey child: {rows[gi].label!r} cited_by={rows[gi].citation_count} "
               f"oa={rows[gi].ids.get('openalex_id')}", file=sys.stderr)
 
         # promote into the GREY child's citations → live fetch
-        await pilot.press("ctrl+c")
+        await pilot.press("c")
         await pilot.pause()
         app.save_screenshot(f"{OUT}_2_fetch_start.svg")
         for i in range(6):                    # let pages stream in

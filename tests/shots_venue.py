@@ -12,7 +12,7 @@ async def land(pilot, app, ref):
         n = app._selected_node()
         if n and n.ref == ref:
             return n
-        await pilot.press("down")
+        await pilot.press("j")
         await pilot.pause()
     return None
 

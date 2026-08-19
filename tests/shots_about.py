@@ -17,7 +17,7 @@ async def main() -> None:
             n = app._selected_node()
             if n and n.ref == "Egenhofer1991":
                 break
-            await pilot.press("down")
+            await pilot.press("j")
             await pilot.pause()
         await asyncio.sleep(1.5)          # let _load_about fetch + re-render the card
         await pilot.pause()
@@ -25,8 +25,8 @@ async def main() -> None:
         print(f"card node: {n.ref} topics={n.topics} keywords={n.keywords}", file=sys.stderr)
         app.save_screenshot(f"{OUT}_1_card.svg")
 
-        # topic search
-        await pilot.press("ctrl+underscore")
+        # find papers (topic search inside the OpenAlex popup)
+        await pilot.press("f")
         await pilot.pause()
         for ch in "topic geographic information systems":
             await pilot.press(ch if ch != " " else "space")

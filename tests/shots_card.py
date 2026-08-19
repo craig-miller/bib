@@ -9,7 +9,7 @@ async def main():
             n = app._selected_node()
             if n and n.ref == target:
                 break
-            await pilot.press("down"); await pilot.pause()
+            await pilot.press("j"); await pilot.pause()
         n = app._selected_node()
         print("on:", n.ref, "abs_len:", len(n.abstract or ""), file=sys.stderr)
         # let _load_about fetch topics/keywords (abstract already from info.yaml)

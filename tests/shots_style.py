@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Screenshot the ctrl-y style picker + a non-default (IEEE) CSL card."""
+"""Screenshot the 'S' style picker + a non-default (IEEE) CSL card."""
 import asyncio
 import sys
 from bib.app import BibApp
@@ -12,7 +12,7 @@ async def land(pilot, app, ref):
         n = app._selected_node()
         if n and n.ref == ref:
             return
-        await pilot.press("down")
+        await pilot.press("j")
         await pilot.pause()
 
 
@@ -22,7 +22,7 @@ async def main() -> None:
         await pilot.pause()
         await land(pilot, app, "Anselin1995")
 
-        await pilot.press("ctrl+y")                 # open picker
+        await pilot.press("S")                       # open picker
         await pilot.pause()
         app.save_screenshot(f"{OUT}_1_picker.svg")
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Screenshot the ctrl-s CSL toggle: same paper, plain head vs CSL reference head."""
+"""Screenshot the 's' CSL toggle: same paper, plain head vs CSL reference head."""
 import asyncio
 import sys
 
@@ -13,7 +13,7 @@ async def land(pilot, app, ref):
         n = app._selected_node()
         if n and n.ref == ref:
             return
-        await pilot.press("down")
+        await pilot.press("j")
         await pilot.pause()
 
 
@@ -24,7 +24,7 @@ async def main() -> None:
         await land(pilot, app, "Anselin1995")
         app.save_screenshot(f"{OUT}_1_plain.svg")
 
-        await pilot.press("ctrl+s")             # → CSL mode
+        await pilot.press("s")             # → CSL mode
         await pilot.pause()
         app.save_screenshot(f"{OUT}_2_csl.svg")
 
@@ -32,7 +32,7 @@ async def main() -> None:
         await land(pilot, app, "Tomlin1990")
         app.save_screenshot(f"{OUT}_3_csl_book.svg")
 
-        await pilot.press("ctrl+s")             # back to plain (verify toggle-off)
+        await pilot.press("s")             # back to plain (verify toggle-off)
         await pilot.pause()
         app.save_screenshot(f"{OUT}_4_plain_again.svg")
 

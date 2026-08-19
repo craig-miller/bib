@@ -22,26 +22,28 @@ async def main() -> None:
             n = app._selected_node()
             if n and n.ref == "Egenhofer1991":
                 break
-            await pilot.press("down")
+            await pilot.press("j")
             await pilot.pause()
         app.save_screenshot(f"{OUT}_2_egenhofer.svg")
 
-        # 2b. fuzzy-filter by typing
+        # 2b. fuzzy-filter — '/' opens the prompt, then type into it
+        await pilot.press("slash")
+        await pilot.pause()
         for ch in "topolog":
             await pilot.press(ch)
         await pilot.pause()
         app.save_screenshot(f"{OUT}_3_filter.svg")
-        await pilot.press("escape")
+        await pilot.press("escape")            # close prompt AND clear filter
         await pilot.pause()
 
-        # re-land on Egenhofer, then promote cited-by → center (ctrl+l)
+        # re-land on Egenhofer, then promote citations → center ('c')
         for _ in range(len(app.library)):
             n = app._selected_node()
             if n and n.ref == "Egenhofer1991":
                 break
-            await pilot.press("down")
+            await pilot.press("j")
             await pilot.pause()
-        await pilot.press("ctrl+l")
+        await pilot.press("c")
         await pilot.pause()
         app.save_screenshot(f"{OUT}_4_promote_citedby.svg")
 

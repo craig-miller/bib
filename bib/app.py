@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
-"""papis graph — a citation-graph discovery TUI (Textual).
+"""bib — a citation-graph discovery TUI (Textual).
 
 A top metadata card over a single full-width table. The table starts as your library
 (Papers); the columns are `· year author title Cited Infl` (Infl = S2 influential
-citation count). Selecting a row and pressing ctrl-c/ctrl-r replaces the table with that
-paper's citations/references (read from the papis `cited-by.yaml`/`citations.yaml` sidecars);
-a browser-style history stack walks in and out.
+citation count). Selecting a row and pressing `c`/`r` replaces the table with that
+paper's citations/references (read from the papis `cited-by.yaml`/`citations.yaml`
+sidecars); a browser-style history stack walks in and out.
 
-Navigation:
-  ctrl-c  citations of selected → table     ctrl-o / esc  back
-  ctrl-r  references of selected → table     ctrl-i        forward
-  ctrl-p  Papers (home)                      ctrl-/        search whole corpus (popup)
-  type    fuzzy-filter · #tag tag-filter         ctrl-shift-/  help popup
-  enter   open (in-library+PDF) · fetch PDF · add+fetch (grey)   ctrl-q  quit
+Keys (single mode; press `?` for the live cheat sheet):
+  j k · gg G · ^d ^u         cursor · top/bottom · half-page
+  ^o · ^i · esc               back · forward · back-when-nothing-to-cancel
+  / · f · ?                   filter (fzf · #tag prefix) · Find papers (OpenAlex) · help
+  s S · z                     CSL toggle · pick style · zoom Details
+  enter                       open (in-library+PDF) · fetch PDF · add+fetch (grey)
+  n · e · t · c · r · dd      notes · edit · tags · citations · references · delete
+  yc · yd · yu                yank citekey (@ref) · DOI · source URL (OSC 52)
+  q                           quit
 
 Grey rows = known-but-not-in-library (rendered dim). Promoting into a grey row has no
 sidecar to read, so its citations/references are **fetched live** from OpenAlex on a
@@ -397,46 +400,84 @@ class Frame:
 
 
 # --------------------------------------------------------------------------- #
-# help popup — floating shortcut list (ctrl-shift-/)                            #
+# help popup — floating shortcut list (?)                                       #
 # --------------------------------------------------------------------------- #
+# Grouped into named sections. A ("§", "Title") entry renders as a bold section
+# heading (with a blank line above). A ("", "") entry renders as a bare blank
+# line — used inside a section for a visual sub-break (e.g. yank commands
+# separated from other Commands).
 HELP_LINES = [
-    ("^c", "Citations"),
-    ("^r", "References"),
-    ("^o, esc", "Back"),
-    ("^i", "Forward"),
-    ("^/", "Search"),
-    ("^p", "Papers"),
-    ("^d", "Expand Details"),
-    ("^s", "CSL / plain toggle"),
-    ("^y", "Pick CSL style"),
-    ("^e", "Edit entry (info.yaml)"),
-    ("^n", "Open notes"),
-    ("^t", "Tags (add · remove)"),
-    ("⇧^d", "Delete entry"),
-    ("enter", "open · fetch PDF · add"),
-    ("^q", "Quit"),
+    ("§",       "Navigation"),
+    ("j k",     "Cursor down · up"),
+    ("gg G",    "Top · bottom"),
+    ("^d ^u",   "Half-page down · up"),
+    ("^o",      "Back"),
+    ("^i",      "Forward"),                # actual key event is `tab` (ctrl-i = 0x09)
+    ("esc",     "Cancel / Back"),
+
+    ("§",       "Search"),
+    ("/",       "Filter (fzf · #tag prefix)"),
+    ("f",       "Find papers (OpenAlex)"),
+
+    ("§",       "Summary"),
+    ("s",       "CSL toggle"),
+    ("S",       "Pick style"),
+    ("z",       "Toggle detail view"),
+
+    ("§",       "Commands"),
+    ("enter",   "Open · fetch · add"),
+    ("n",       "Notes"),
+    ("e",       "Edit info.yaml"),
+    ("t",       "Tags"),
+    ("c",       "Citations"),
+    ("r",       "References"),
+    ("dd",      "Delete entry"),
+    ("",        ""),
+    ("yc",      "Yank citekey (@ref)"),
+    ("yd",      "Yank DOI"),
+    ("yu",      "Yank source URL"),
+
+    ("§",       "Application"),
+    ("?",       "Help"),
+    ("q",       "Quit"),
 ]
 
 
 class HelpScreen(ModalScreen):
     CSS = """
     HelpScreen { align: center middle; background: $background 55%; }
-    #help-box { width: 34; height: auto; border: round $primary;
+    #help-box { width: 60; height: auto; border: round $primary;
                 background: $surface; padding: 1 2; }
     """
+    # Dismiss on esc (universal cancel) or ? (toggle-back mnemonic). Deliberately no
+    # `q` — that's the app's quit key everywhere else and shouldn't be repurposed to
+    # close a dialog. Modals use esc; the app uses q.
     BINDINGS = [
         Binding("escape", "dismiss", "close"),
-        Binding("ctrl+question_mark", "dismiss", "close"),
-        Binding("ctrl+shift+slash", "dismiss", "close"),
+        Binding("question_mark", "dismiss", "close"),
+        Binding("shift+slash", "dismiss", "close"),
     ]
 
     def compose(self) -> ComposeResult:
+        # Content width = box width (60) - round border (2) - horizontal padding (4).
+        # Section titles are centered within this; key/label pairs stay left-justified.
+        CONTENT_W = 54
         body = Text()
-        body.append("Keyboard shortcuts\n\n", style="bold")
+        first_section = True
         for key, label in HELP_LINES:
+            if key == "§":
+                if not first_section:
+                    body.append("\n")               # blank line before every section but the first
+                pad = max(0, (CONTENT_W - len(label)) // 2)
+                body.append(f"{' ' * pad}{label}\n", style="dim")
+                first_section = False
+                continue
+            if not key and not label:
+                body.append("\n")                    # blank line within a section
+                continue
             body.append(f"{key:8}", style="yellow")
             body.append(f"{label}\n")
-        body.append("\nesc to close", style="dim")
+        body.append("\nesc · ? to close", style="dim")
         yield Static(body, id="help-box")
 
 
@@ -455,7 +496,9 @@ class ConfirmScreen(ModalScreen[bool]):
     """
     BINDINGS = [
         Binding("enter", "confirm", "confirm"),
+        Binding("y", "confirm", "confirm"),           # vim-like affirmative
         Binding("escape", "cancel", "cancel"),
+        Binding("n", "cancel", "cancel"),             # vim-like negative
     ]
 
     def __init__(self, title: str, detail: str = "") -> None:
@@ -470,7 +513,7 @@ class ConfirmScreen(ModalScreen[bool]):
             yield Static(self._title, id="confirm-title", markup=False)
             if self._detail:
                 yield Static(self._detail, id="confirm-detail", markup=False)
-            yield Static("\n[enter] Delete   ·   [esc] Cancel",
+            yield Static("\n[y/enter] Delete   ·   [n/esc] Cancel",
                          id="confirm-hint", markup=False)
 
     def action_confirm(self) -> None:
@@ -497,7 +540,7 @@ class SearchScreen(ModalScreen[str]):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="search-box"):
-            yield Static("Search — whole corpus (OpenAlex)", id="search-title")
+            yield Static("Find papers (OpenAlex)", id="search-title")
             yield Input(placeholder="doi <doi> · author <name> · topic <name> · "
                         "keyword a | b · <title>", id="q")
             yield Static("enter to search · esc to cancel", id="search-hint")
@@ -533,7 +576,21 @@ class FetchScreen(ModalScreen["str | None"]):
     #fetch-table { height: 1fr; }
     #fetch-table > .datatable--cursor { background: $accent; }
     """
-    BINDINGS = [Binding("escape", "cancel", "cancel")]
+    BINDINGS = [
+        Binding("escape", "cancel", "cancel"),
+        # j/k vim-navigation over the source table. No filter Input here (focus is
+        # on the DataTable), so screen bindings for j/k fire cleanly. StyleScreen
+        # and TagScreen deliberately skip this — their filter Inputs would consume
+        # printable chars before the screen binding could fire.
+        Binding("j", "cursor_down", show=False),
+        Binding("k", "cursor_up", show=False),
+    ]
+
+    def action_cursor_down(self) -> None:
+        self.query_one("#fetch-table", DataTable).action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.query_one("#fetch-table", DataTable).action_cursor_up()
 
     def __init__(self, node: "Node") -> None:
         super().__init__()
@@ -1127,6 +1184,18 @@ class TopCard(Vertical):
 
 
 # --------------------------------------------------------------------------- #
+# filter prompt — a slim Input that pops in above the status row on `/`         #
+# --------------------------------------------------------------------------- #
+class FilterInput(Input):
+    """The bottom-row filter prompt. Its own esc binding routes to the app so the app
+    can hide the widget AND clear the filter atomically. Everything else (typing,
+    backspace, enter/submit) is inherited from Input; the app owns the Changed +
+    Submitted message handlers so filter state stays on the app, not this widget."""
+
+    BINDINGS = [Binding("escape", "app.close_filter_and_clear", show=False)]
+
+
+# --------------------------------------------------------------------------- #
 # app                                                                          #
 # --------------------------------------------------------------------------- #
 class BibApp(App):
@@ -1134,7 +1203,7 @@ class BibApp(App):
     CSS = """
     Screen { layout: vertical; }
     #card { height: 19; padding: 0 1; }                    /* borderless — no box-drawing lines */
-    #card.expanded { height: 1fr; }          /* ctrl-d: Details panel fills the screen */
+    #card.expanded { height: 1fr; }          /* z: Details panel fills the screen */
     #card-body { height: 1fr; }              /* metadata + abstract */
     #card-ref { height: 1; }                 /* docked bottom row */
     #card-ref-left  { width: 1fr; color: $text-muted; }   /* @ref citation key (bottom-left) */
@@ -1143,37 +1212,68 @@ class BibApp(App):
     /* bordered table (dim grey = topics-value shade); the card above stays borderless. */
     #center { height: 1fr; border: round ansi_default 50%; scrollbar-size-vertical: 1;
               scrollbar-color: ansi_bright_black; scrollbar-background: ansi_default; }
-    #center.hidden { display: none; }        /* ctrl-d: table hidden while Details is expanded */
+    #center.hidden { display: none; }        /* z: table hidden while Details is expanded */
+    /* filter: hidden by default, revealed on '/' and focused. A 3-row bordered Input to
+       match the modal aesthetics; live-narrows the visible rows as the user types. */
+    #filter { height: 3; border: round $primary; }
+    #filter.hidden { display: none; }
     #status { height: 1; color: $text-muted; padding: 0 1; }
+    #hint   { height: 1; color: $warning;    padding: 0 1; }   /* ephemeral messages */
     DataTable > .datatable--cursor { background: ansi_bright_black; color: ansi_bright_white; }
     /* ANSI theme paints the header on ansi_bright_blue; force dark text so it stays legible
        (terminal default fg is light in dark mode → too low contrast on the bright header). */
     DataTable > .datatable--header { color: ansi_black; }
     """
 
-    ENABLE_COMMAND_PALETTE = False   # free ctrl+p for "home"
+    ENABLE_COMMAND_PALETTE = False   # unused; we roll our own key surface
 
+    # Vim-like single-mode keymap. Typing letters DOES NOT filter — press '/' to open the
+    # filter prompt. Multi-char sequences (gg, gp, dd, yc, yd, yu) are handled in `on_key`
+    # via a 300ms pending-key state, not by Binding (Textual has no chord support).
     BINDINGS = [
-        Binding("ctrl+c", "promote_right", "Citations", priority=True),
-        Binding("ctrl+r", "promote_left", "References"),
-        Binding("ctrl+o", "back", "Back"),
-        Binding("escape", "back", "Back", show=False),   # esc = back (when no filter active)
-        Binding("ctrl+i", "forward", "Forward"),
-        Binding("ctrl+slash", "search", "Search"),
-        Binding("ctrl+underscore", "search", "Search", show=False),   # legacy ctrl+/ (0x1f)
-        Binding("ctrl+p", "home", "Papers"),
-        Binding("ctrl+d", "toggle_details", "Expand Details"),
-        Binding("ctrl+s", "toggle_csl", "CSL ref"),
-        Binding("ctrl+y", "pick_style", "Style"),
-        Binding("ctrl+e", "edit", "Edit entry"),
-        Binding("ctrl+n", "notes", "Notes"),
-        Binding("ctrl+t", "tags", "Tags"),
-        Binding("ctrl+shift+d", "delete", "Delete entry"),
-        Binding("ctrl+q", "quit", "Quit"),           # plain 'q' is a filter character (on_key)
-        Binding("ctrl+question_mark", "help", "Help"),
-        Binding("ctrl+shift+slash", "help", "Help", show=False),      # alt encoding of ctrl-shift-/
-        Binding("enter", "enter", "open/get"),
+        # navigation (DataTable owns up/down/enter/pageup/pagedown natively; j/k added here)
+        Binding("j", "cursor_down", show=False),
+        Binding("k", "cursor_up", show=False),
+        Binding("G", "bottom", show=False),
+        Binding("ctrl+d", "half_page_down", show=False),
+        Binding("ctrl+u", "half_page_up", show=False),
+        # frame stack (jump-list metaphor). Bind `tab`, not `ctrl+i`: terminals send byte
+        # 0x09 for both and Textual normalizes to `tab`, so a ctrl+i binding never matches.
+        # priority=True beats the default Screen `tab → focus_next` binding.
+        Binding("ctrl+o", "back", "Back", priority=True),
+        Binding("tab", "forward", "Forward", priority=True),
+        # filter + whole-corpus search + help
+        Binding("slash", "open_filter", "Filter"),
+        Binding("f", "search", "Search"),
+        Binding("question_mark", "help", "Help"),
+        Binding("shift+slash", "help", show=False),   # alt encoding of '?'
+        # display
+        Binding("s", "toggle_csl", "CSL"),
+        Binding("S", "pick_style", "Style"),
+        Binding("z", "toggle_details", "Zoom"),
+        # paper actions (c retains priority=True so ctrl+c-style muscle memory isn't
+        # ambiguous with any downstream widget that also reacts to plain 'c')
+        Binding("n", "notes", "Notes"),
+        Binding("e", "edit", "Edit"),
+        Binding("t", "tags", "Tags"),
+        Binding("c", "promote_right", "Cites", priority=True),
+        Binding("r", "promote_left", "Refs"),
+        # quit
+        Binding("q", "quit", "Quit"),
     ]
+
+    # Multi-char sequences (first-key → set of valid second keys → action name). Consulted
+    # by on_key when a pending-key is active. Any second key not listed here cancels the
+    # pending state and dispatches normally through Bindings.
+    _CHORDS: "dict[tuple[str, str], str]" = {
+        ("g", "g"): "top",
+        ("d", "d"): "delete",
+        ("y", "c"): "yank_citekey",
+        ("y", "d"): "yank_doi",
+        ("y", "u"): "yank_url",
+    }
+    _CHORD_STARTERS = frozenset({"g", "d", "y"})
+    _CHORD_TIMEOUT = 0.3   # seconds — matches Craig's spec for double-tap window
 
     def __init__(self) -> None:
         super().__init__()
@@ -1187,14 +1287,20 @@ class BibApp(App):
         self.stack: list[Frame] = []
         self.sp = 0                     # stack pointer (for back/forward)
         self.filter_buf = ""
-        self._details_expanded = False          # ctrl-d: details panel full-screen (table hidden)
+        self._details_expanded = False          # z: details panel full-screen (table hidden)
         self._client: gc.Client | None = None   # lazy shared async client for live fetch
+        self._hint_timer = None                 # transient bottom-row message → auto-clear
+        self._pending: str | None = None        # first key of a pending chord (g/d/y)
+        self._pending_timer = None              # cancels the pending chord after 300ms
 
     # ---- layout ----
     def compose(self) -> ComposeResult:
         yield TopCard(id="card")
         yield DataTable(id="center", cursor_type="row", zebra_stripes=True)
+        yield FilterInput(placeholder="filter · #tag prefix",
+                          id="filter", classes="hidden")
         yield Static(id="status")
+        yield Static(id="hint")
 
     def on_mount(self) -> None:
         db = papis.database.get()
@@ -1303,6 +1409,24 @@ class BibApp(App):
         self.query_one("#status", Static).update(
             f"{f.title}   ({shown} papers){filt}{load}{trunc}{hist}")
 
+    def _hint(self, msg: str, timeout: float = 1.2) -> None:
+        """Show a transient message in the bottom hint row. Replaces the bell — a
+        muted-yellow line that says why an action was a no-op, then self-clears so it
+        never lingers in the user's field of view. Passing timeout=0 pins the message
+        until _hint_clear() is called (used for pending-key indicators like 'd…')."""
+        if self._hint_timer is not None:
+            self._hint_timer.stop()
+            self._hint_timer = None
+        self.query_one("#hint", Static).update(msg)
+        if timeout > 0:
+            self._hint_timer = self.set_timer(timeout, self._hint_clear)
+
+    def _hint_clear(self) -> None:
+        if self._hint_timer is not None:
+            self._hint_timer.stop()
+            self._hint_timer = None
+        self.query_one("#hint", Static).update("")
+
     # ---- context columns + card for the highlighted row ----
     def _selected_node(self) -> Node | None:
         if not getattr(self, "_rows", None):
@@ -1338,26 +1462,214 @@ class BibApp(App):
             self._load_about(n)
 
     # ---- typed filter (printable keys; ctrl-combos stay bindings) ----
+    # ---- input dispatch ----
+    def check_action(self, action: str, parameters: tuple) -> "bool | None":
+        """Gate app-level bindings for two reasons:
+
+        1. While a modal is up, a stray 'n'/'s'/etc. typed into a picker must NOT
+           fire the app-level action. Modals own the screen; their own BINDINGS
+           still work because they belong to the modal, not the app. `quit` is
+           whitelisted — q means quit-the-app everywhere (except inside a text
+           input, which consumes the char as text before bindings dispatch).
+        2. While a chord is pending (user pressed 'y'/'d'/'g' and we're waiting for
+           the second key), Textual would otherwise dispatch the second key's
+           binding (e.g. 'c' → action_promote_right) BEFORE our on_key gets a
+           chance to complete the chord (e.g. 'yc' → action_yank_citekey). Gate
+           all app bindings so on_key runs the chord machinery instead. If the
+           second key isn't a valid continuation, on_key re-dispatches it manually.
+        """
+        if len(self.screen_stack) > 1:
+            if action == "quit":
+                return True                          # q quits from within modals too
+            return None
+        if self._pending is not None:
+            return None
+        return True
+
     def on_key(self, event) -> None:
-        if len(self.screen_stack) > 1:      # a modal (search/help) is up — it owns keys
+        """Single-mode key dispatch. Order:
+          1. modal owns screen → bail (Bindings gated by check_action, on_key silent)
+          2. filter Input has focus → bail (Input consumes typing)
+          3. escape → cancel current input op, or fall through to Back
+          4. chord continuation? complete the chord, or re-dispatch second key
+          5. chord starter (g/d/y)? arm pending + 300ms timer
+        Everything else is a Binding.
+        """
+        if len(self.screen_stack) > 1:
             return
-        if event.character and event.character.isprintable() and len(event.character) == 1:
-            self.filter_buf += event.character
+        if isinstance(self.focused, FilterInput):
+            return
+
+        key = event.key
+
+        # esc order: filter open/applied → clear · pending → clear · else → Back
+        # (Craig-approved reversal on top of the earlier "esc never navigates" rule:
+        # a plain esc with nothing to cancel now feels like ctrl+o, which matches user
+        # expectation when drilled into a citations frame.)
+        if key == "escape":
+            filt = self.query_one("#filter", FilterInput)
+            if (not filt.has_class("hidden")) or self.filter_buf:
+                self._close_filter_and_clear()
+            elif self._pending is not None:
+                self._clear_pending()
+            elif self.sp > 0:
+                self.action_back()
+            else:
+                self._hint("nothing to cancel")
+            event.prevent_default(); event.stop()
+            return
+
+        # chord continuation? Bindings are gated by check_action while _pending, so
+        # this handler owns the second-key dispatch.
+        if self._pending is not None:
+            prev = self._pending
+            self._clear_pending()
+            action = self._CHORDS.get((prev, key))
+            if action is not None:
+                getattr(self, f"action_{action}")()
+                event.prevent_default(); event.stop()
+                return
+            # Non-completion: re-dispatch the second key to its would-be Binding
+            # manually (since check_action gated it while pending). If the key
+            # isn't bound, silently no-op.
+            for b in self.BINDINGS:
+                if b.key == key and hasattr(self, f"action_{b.action}"):
+                    getattr(self, f"action_{b.action}")()
+                    event.prevent_default(); event.stop()
+                    return
+            return
+
+        # chord starter? swallow the key and arm the pending state + 300ms clear timer.
+        if key in self._CHORD_STARTERS:
+            self._pending = key
+            self._hint(f"{key}…", timeout=0)             # pinned until chord completes/cancels
+            self._pending_timer = self.set_timer(self._CHORD_TIMEOUT, self._clear_pending)
+            event.prevent_default(); event.stop()
+            return
+
+    def _clear_pending(self) -> None:
+        if self._pending_timer is not None:
+            self._pending_timer.stop()
+            self._pending_timer = None
+        if self._pending is not None:
+            self._pending = None
+            self._hint_clear()
+
+    # ---- filter prompt ----
+    def action_open_filter(self) -> None:
+        """'/' → reveal the filter Input, seed with current filter_buf, take focus.
+        Re-opening while a filter is applied edits-in-place (buf preserved)."""
+        filt = self.query_one("#filter", FilterInput)
+        filt.value = self.filter_buf                    # seed for edit-in-place
+        filt.remove_class("hidden")
+        filt.focus()
+
+    def action_close_filter_and_clear(self) -> None:
+        """esc from within the filter Input (or from the main view when a filter is
+        open/applied). Hides the prompt, clears the buffer, restores focus to the
+        table, and re-renders so the full list is visible."""
+        filt = self.query_one("#filter", FilterInput)
+        filt.value = ""
+        filt.add_class("hidden")
+        self.filter_buf = ""
+        self._render_center()
+        self.query_one("#center", DataTable).focus()
+
+    def _close_filter_and_clear(self) -> None:
+        # Non-action alias — used from on_key so we don't have to hop through the
+        # action machinery. Same body.
+        self.action_close_filter_and_clear()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        """Live-filter as the user types into the '/' prompt. Ignore Inputs from
+        modals (their own screens receive their own on_input_changed)."""
+        if event.input.id == "filter":
+            self.filter_buf = event.value
             self._render_center()
-            event.prevent_default()
-        elif event.key == "backspace" and self.filter_buf:
-            self.filter_buf = self.filter_buf[:-1]
-            self._render_center()
-            event.prevent_default()
-        elif event.key == "escape" and self.filter_buf:
-            self.filter_buf = ""
-            self._render_center()
-            event.prevent_default()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Enter in the filter prompt: hide the widget but KEEP the filter applied,
+        return focus to the table so j/k works on the filtered set. esc-instead would
+        both hide and clear (action_close_filter_and_clear)."""
+        if event.input.id == "filter":
+            self.query_one("#filter", FilterInput).add_class("hidden")
+            self.query_one("#center", DataTable).focus()
+
+    # ---- navigation helpers ----
+    def action_cursor_down(self) -> None:
+        self.query_one("#center", DataTable).action_cursor_down()
+
+    def action_cursor_up(self) -> None:
+        self.query_one("#center", DataTable).action_cursor_up()
+
+    def action_top(self) -> None:
+        t = self.query_one("#center", DataTable)
+        if t.row_count:
+            t.move_cursor(row=0)
+
+    def action_bottom(self) -> None:
+        t = self.query_one("#center", DataTable)
+        if t.row_count:
+            t.move_cursor(row=t.row_count - 1)
+
+    def action_half_page_down(self) -> None:
+        t = self.query_one("#center", DataTable)
+        step = max(1, t.scrollable_content_region.height // 2)
+        for _ in range(step):
+            t.action_cursor_down()
+
+    def action_half_page_up(self) -> None:
+        t = self.query_one("#center", DataTable)
+        step = max(1, t.scrollable_content_region.height // 2)
+        for _ in range(step):
+            t.action_cursor_up()
+
+    # ---- yank ----
+    # Uses Textual's App.copy_to_clipboard(), which drives OSC 52 through the same
+    # terminal driver that owns the alternate screen. A hand-rolled sys.stdout write
+    # goes nowhere while Textual is running — the driver holds the tty.
+    def action_yank_citekey(self) -> None:
+        """Yank the citekey in @citation form, ready to paste into a Typst/pandoc
+        manuscript without further shaping."""
+        n = self._selected_library_node()
+        if n is None:
+            return
+        cite = f"@{n.ref}" if n.ref else ""
+        self.copy_to_clipboard(cite)
+        self._hint(f"yanked citekey: {cite}")
+
+    def action_yank_doi(self) -> None:
+        n = self._selected_node()
+        if n is None:
+            self._hint("no row selected"); return
+        if not n.doi:
+            self._hint("no DOI on selected row"); return
+        self.copy_to_clipboard(n.doi)
+        self._hint(f"yanked doi: {n.doi}")
+
+    def action_yank_url(self) -> None:
+        """Yank the primary source URL for the selected row. Prefers the DOI URL when
+        present (canonical for a paper); falls back to OpenAlex id URL for grey nodes
+        that lack a DOI (books/reports OpenAlex indexes shallowly)."""
+        n = self._selected_node()
+        if n is None:
+            self._hint("no row selected"); return
+        url = None
+        if n.doi:
+            url = f"https://doi.org/{n.doi}"
+        elif n.ids.get("openalex_id"):
+            url = f"https://openalex.org/{n.ids['openalex_id']}"
+        if url is None:
+            self._hint("no URL on selected row"); return
+        self.copy_to_clipboard(url)
+        self._hint(f"yanked url: {url}")
 
     # ---- actions ----
     def _promote(self, nodes: list[Node], title: str) -> None:
         if not nodes:
-            self.bell()
+            # title looks like "Citations of <label>" / "References of <label>"; keep the
+            # first word so the hint reads "no citations" / "no references".
+            self._hint(f"no {title.split()[0].lower()}")
             return
         self._push_frame(Frame(title, nodes))
 
@@ -1381,7 +1693,7 @@ class BibApp(App):
             return
         # grey neighbor — nothing on disk; walk the graph live
         if not (n.ids.get("openalex_id") or n.doi or n.title):
-            self.bell()
+            self._hint("no source to walk from (no doi / openalex id / title)")
             return
         frame = Frame(f"{label} of {n.label}", [], loading=True)
         self._push_frame(frame)
@@ -1393,7 +1705,7 @@ class BibApp(App):
             self.filter_buf = ""
             self._render_center()
         else:
-            self.bell()
+            self._hint("already at oldest frame")
 
     def action_forward(self) -> None:
         if self.sp < len(self.stack) - 1:
@@ -1401,10 +1713,7 @@ class BibApp(App):
             self.filter_buf = ""
             self._render_center()
         else:
-            self.bell()
-
-    def action_home(self) -> None:
-        self._push_frame(Frame("Papers", self.library))
+            self._hint("already at newest frame")
 
     def action_toggle_details(self) -> None:
         """ctrl-d: expand the Details panel to fill the screen (hiding the table) and back.
@@ -1441,12 +1750,24 @@ class BibApp(App):
         self._update_card()
         self.notify(f"reference style → {chosen}")
 
-    def action_edit(self) -> None:
-        """ctrl-e: open the selected library entry's info.yaml in $EDITOR (or vi), then reload
-        the (possibly changed) metadata. Only for in-library papers; grey nodes have no file."""
+    def _selected_library_node(self) -> Node | None:
+        """Return the selected node iff it's a library entry with a papis doc. Otherwise
+        emit the precise reason to the hint row and return None. Used by every action
+        that only makes sense on a library row (edit / notes / tags / delete)."""
         n = self._selected_node()
-        if n is None or not n.in_library or n.doc is None:
-            self.bell()
+        if n is None:
+            self._hint("no row selected")
+            return None
+        if not n.in_library or n.doc is None:
+            self._hint("not in library — press enter to add")
+            return None
+        return n
+
+    def action_edit(self) -> None:
+        """Open the selected library entry's info.yaml in $EDITOR (or vi), then reload
+        the (possibly changed) metadata. Only for in-library papers; grey nodes have no file."""
+        n = self._selected_library_node()
+        if n is None:
             return
         self._edit_worker(n)
 
@@ -1477,12 +1798,11 @@ class BibApp(App):
         self.notify(f"updated @{n.ref}")
 
     def action_notes(self) -> None:
-        """ctrl-n: open the selected library entry's notes file in $EDITOR, creating it from the
-        papis notes-template if it doesn't exist yet. Only for in-library papers; grey nodes have
-        no folder to hold a note."""
-        n = self._selected_node()
-        if n is None or not n.in_library or n.doc is None:
-            self.bell()
+        """Open the selected library entry's notes file in $EDITOR, creating it from the
+        papis notes-template if it doesn't exist yet. Only for in-library papers; grey nodes
+        have no folder to hold a note."""
+        n = self._selected_library_node()
+        if n is None:
             return
         self._notes_worker(n)
 
@@ -1514,12 +1834,11 @@ class BibApp(App):
         self.notify(f"notes @{n.ref}")
 
     def action_tags(self) -> None:
-        """ctrl-t: add/remove tags on the selected library entry via a toggle picker. Every
-        toggle saves immediately; esc just closes. Only for in-library papers; grey nodes have
-        no info.yaml to tag."""
-        n = self._selected_node()
-        if n is None or not n.in_library or n.doc is None:
-            self.bell()
+        """Add/remove tags on the selected library entry via a toggle picker. Every toggle
+        saves immediately; esc just closes. Only for in-library papers; grey nodes have no
+        info.yaml to tag."""
+        n = self._selected_library_node()
+        if n is None:
             return
         self.push_screen(
             TagScreen(self._library_tags(), set(doc_tags(n.doc)),
@@ -1553,11 +1872,10 @@ class BibApp(App):
         papis.database.get().update(n.doc)
 
     def action_delete(self) -> None:
-        """⇧ctrl-d: delete the selected library entry — its folder, PDF, notes, everything —
-        behind a y/n confirm. Grey nodes have nothing to delete."""
-        n = self._selected_node()
-        if n is None or not n.in_library or n.doc is None:
-            self.bell()
+        """Delete the selected library entry — its folder, PDF, notes, everything — behind a
+        y/n confirm. Grey nodes have nothing to delete."""
+        n = self._selected_library_node()
+        if n is None:
             return
         self.push_screen(
             ConfirmScreen(

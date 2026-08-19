@@ -1,6 +1,6 @@
-# bib
+# bib - reference management and discovery
 
-A reference manager tui for [papis](https://github.com/papis/papis).
+A tui reference manager frontend for [papis](https://github.com/papis/papis) that adds the ability to find related publications.
 
 `bib` is a keyboard driven (vim motions inspired) terminal UI over your papis library that helps surface related seminal works. You browse your papers in a table, that shows citations, references, and influence. Automatically fetch related papers' metadata (year, author, doi, publisher, abstract, etc) from OpenAlex. If a paper isn't in your library, you can add / download it.
 
@@ -25,32 +25,75 @@ Your own `papis` command is untouched.
 
 ## Keys
 
-| key | action |
-|---|---|
-| `↑`/`↓`, type | move · fuzzy-filter (`#kw` = keyword) |
-| `ctrl+c` / `ctrl+r` | citations / references of the selected paper |
-| `ctrl+o` / `esc`, `ctrl+i` | back / forward |
-| `ctrl+p` | home (your library) |
-| `ctrl+/` | search the whole corpus (OpenAlex) |
-| `enter` | open (in-library + PDF) · fetch PDF · add + fetch (grey rows) |
-| `ctrl+s` | toggle the card between the structured layout and a CSL reference |
-| `ctrl+y` | pick the CSL reference style |
-| `ctrl+d` | expand the detail card full-screen |
-| `ctrl+e` / `ctrl+shift+d` | edit / delete the selected entry |
-| `ctrl+q`, `ctrl+shift+/` | quit · help |
+Single-mode, vim-inspired keyboard motions.
+`/` to search your library.
+j/k, G, gg, ctrl-d/ctrl-u to navigate your papers
 
-The card mode and chosen CSL style persist in `~/.config/bib/state.json`.
+`?` Integrated help for all keybindings
+
+**Navigation**
+
+| key                 | action                                             |
+|---------------------|----------------------------------------------------|
+| `j` / `k`           | Cursor down · up                                   |
+| `gg` / `G`          | Top · bottom                                       |
+| `ctrl+d` / `ctrl+u` | Half-page down · up                                |
+| `ctrl+o` / `ctrl+i` | Back · forward                                     |
+| `esc`               | Cancel / back                                      |
+
+**Search**
+
+| key | action                                                             |
+|-----|--------------------------------------------------------------------|
+| `/` | Filter the current frame (fzf-style; `#tag` prefix for tag filter) |
+| `f` | Find papers (OpenAlex) author, keyword, doi, etc                   |
+
+**Summary card**
+
+| key | action                                                             |
+|-----|--------------------------------------------------------------------|
+| `s` | CSL / structured toggle                                            |
+| `S` | Pick CSL style                                                     |
+| `z` | Toggle detail view (full-screen)                                   |
+
+**Commands**
+
+| key     | action                                                         |
+|---------|----------------------------------------------------------------|
+| `enter` | Open (in-library + PDF) · fetch PDF · add + fetch (grey rows)  |
+| `n`     | Notes                                                          |
+| `e`     | Edit info.yaml                                                 |
+| `t`     | Tags                                                           |
+| `c`     | Citations of the selected paper                                |
+| `r`     | References of the selected paper                               |
+| `dd`    | Delete entry (y/n confirm)                                     |
+
+**Yank** —  Copy to clipboard
+
+| key  | action                                                            |
+|------|-------------------------------------------------------------------|
+| `yc` | Citekey (`@ref` — paste-ready for Typst/pandoc)                   |
+| `yd` | DOI                                                               |
+| `yu` | Source URL (DOI URL, or OpenAlex URL for grey rows)               |
+
+**Application**
+
+| key | action                                                             |
+|-----|--------------------------------------------------------------------|
+| `?` | Help                                                               |
+| `q` | Quit Application                                                  |
 
 ## CSL styles
 
-`bib` renders the reference card in-process with [citeproc-py](https://github.com/citeproc-py/citeproc-py)
-(CSL 1.0.1). It bundles the subset of the styles [Typst](https://typst.app) ships that citeproc-py can
-render, named by their CSL id so they match Typst's `#bibliography(style: …)`. Styles that rely on
-CSL 1.0.2 features (APA, MLA, Chicago author-date, …) are not renderable by citeproc-py and so aren't
-offered. Override the active style file with `BIB_CSL_STYLE=/path/to/style.csl`.
+`bib` renders the reference card using CSL 1.0.1. It bundles the subset of
+the styles [Typst](https://typst.app) ships that citeproc-py can
+render, named by their CSL id so they match Typst's `#bibliography(style: …)`.
+Styles that rely on CSL 1.0.2 features (APA, MLA, Chicago author-date, …) are
+not renderable by citeproc-py and so aren't offered. Override the active
+style file with `BIB_CSL_STYLE=/path/to/style.csl`.
 
-The bundled `.csl` files are from the Citation Style Language project and are licensed CC-BY-SA 3.0 —
-see `bib/styles/csl/ATTRIBUTION.md`.
+The bundled `.csl` files are from the Citation Style Language project and
+are licensed CC-BY-SA 3.0 — see `bib/styles/csl/ATTRIBUTION.md`.
 
 ## Acknowledgements
 

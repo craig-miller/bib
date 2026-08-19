@@ -1169,7 +1169,7 @@ class TopCard(Vertical):
             if len(abstract) > budget:
                 abstract = abstract[:budget - 1].rsplit(" ", 1)[0] + "…"
             t.append("\n\n")
-            t.append(abstract, style="italic dim")
+            t.append(abstract, style="italic")
         body.update(t)
         ref_left.update(f"@{n.ref}" if n.ref else "")
         # influential · cited-by, centered. Infl in the table's yellow (only when it has data;

@@ -32,8 +32,10 @@ import functools
 import importlib.resources
 import json
 import os
+import re
 import subprocess
 import tempfile
+from collections import Counter
 
 # NOTE: `PAPIS_NP=0` (disables papis's multiprocessing, which crashes under Textual — see
 # papers/__init__.py for the full reason) is set in the package __init__, which runs before
@@ -49,7 +51,8 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import DataTable, Input, Static
+from textual.widgets import DataTable, Input, OptionList, Static
+from textual.widgets.option_list import Option
 
 import papis.config
 import papis.database
@@ -723,50 +726,64 @@ class FetchScreen(ModalScreen["str | None"]):
 
 
 class StyleScreen(ModalScreen["str | None"]):
-    """Pick the CSL reference style. Filter-as-you-type over the bundled styles (id + title);
-    ↑/↓ move, enter selects (its id becomes the sticky default), esc cancels. Focus stays on the
-    input for typing; ↑/↓/enter are handled at screen level so they drive the list underneath."""
+    """Pick the CSL reference style. vi-mode: j/k navigate, `/` opens a filter
+    over id + title, enter picks, esc cancels (or clears the filter if one is
+    open). The DataTable owns focus so plain letters don't slip into a filter
+    Input by accident."""
     CSS = """
     StyleScreen { align: center middle; background: $background 60%; }
-    #style-box { width: 74%; height: 80%; border: round $primary;
-                 background: $surface; padding: 0 1; }
-    #style-title { color: $accent; }
+    #style-box { width: 88%; height: 80%; border: round $primary;
+                 background: ansi_default; padding: 0 1; }
     #style-hint  { color: $text-muted; }
-    #style-table { height: 1fr; }
-    #style-table > .datatable--cursor { background: $accent; }
+    #style-prompt { }
+    #style-prompt.hidden { display: none; }
+    #style-table { height: 1fr;
+        scrollbar-size-vertical: 1;
+        scrollbar-color: ansi_bright_black;
+        scrollbar-background: ansi_default;
+    }
+    #style-table > .datatable--cursor {
+        background: ansi_bright_black; color: ansi_bright_white;
+    }
     """
     BINDINGS = [
-        Binding("escape", "cancel", "cancel"),
-        Binding("down", "cursor_down", show=False),
-        Binding("up", "cursor_up", show=False),
-        Binding("enter", "choose", show=False),
+        Binding("escape", "close",        "close"),
+        Binding("j",      "cursor_down",  show=False),
+        Binding("k",      "cursor_up",    show=False),
+        Binding("down",   "cursor_down",  show=False),
+        Binding("up",     "cursor_up",    show=False),
+        Binding("g",      "top",          show=False),
+        Binding("G",      "bottom",       show=False),
+        Binding("slash",  "start_filter", show=False),
     ]
+    _HINT_DEFAULT = "j/k · / filter · enter select · esc close"
 
     def __init__(self, styles: list[tuple[str, str]], current: str | None) -> None:
         super().__init__()
         self._all = styles              # [(id, title)] sorted by id
         self._current = current
         self._filtered: list[str] = []  # ids currently shown, row-aligned
+        self._mode = "browse"           # "browse" | "filter"
+        self._filter = ""
 
     def compose(self) -> ComposeResult:
         with Vertical(id="style-box"):
-            yield Static("Reference style — CSL (id matches Typst)", id="style-title")
-            yield Input(placeholder="filter by id or title…", id="style-q")
+            yield Input(id="style-prompt", classes="hidden")
             yield DataTable(id="style-table", cursor_type="row", zebra_stripes=True)
-            yield Static("↑/↓ move · enter select · esc cancel", id="style-hint")
+            yield Static(self._HINT_DEFAULT, id="style-hint")
 
     def on_mount(self) -> None:
         t = self.query_one("#style-table", DataTable)
         t.add_column("Style (id)", key="id", width=46)
         t.add_column("Title", key="title")
-        self._fill("")
-        self.query_one("#style-q", Input).focus()
+        self._refill()
+        t.focus()
 
-    def _fill(self, needle: str) -> None:
+    def _refill(self) -> None:
         t = self.query_one("#style-table", DataTable)
         t.clear()
         self._filtered.clear()
-        needle = needle.lower().strip()
+        needle = self._filter.lower().strip()
         cursor = 0
         for sid, title in self._all:
             if needle and needle not in sid.lower() and needle not in title.lower():
@@ -782,14 +799,12 @@ class StyleScreen(ModalScreen["str | None"]):
         if self._filtered:
             t.move_cursor(row=cursor)
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        self._fill(event.value)
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        # Focus is on the filter Input, so Enter arrives as a submit (the screen-level `enter`
-        # binding never fires) — route it to the same selection action.
-        event.stop()
-        self.action_choose()
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if self._mode != "browse" and action in (
+            "cursor_down", "cursor_up", "top", "bottom", "start_filter",
+        ):
+            return None
+        return True
 
     def action_cursor_down(self) -> None:
         self.query_one("#style-table", DataTable).action_cursor_down()
@@ -797,7 +812,50 @@ class StyleScreen(ModalScreen["str | None"]):
     def action_cursor_up(self) -> None:
         self.query_one("#style-table", DataTable).action_cursor_up()
 
-    def action_choose(self) -> None:
+    def action_top(self) -> None:
+        self.query_one("#style-table", DataTable).action_scroll_top()
+
+    def action_bottom(self) -> None:
+        self.query_one("#style-table", DataTable).action_scroll_bottom()
+
+    def action_start_filter(self) -> None:
+        self._mode = "filter"
+        p = self.query_one("#style-prompt", Input)
+        p.value = self._filter
+        p.placeholder = "filter by id or title"
+        p.remove_class("hidden")
+        p.focus()
+
+    def _close_prompt(self, clear: bool = False) -> None:
+        self._mode = "browse"
+        p = self.query_one("#style-prompt", Input)
+        if clear:
+            self._filter = ""
+            self._refill()
+        p.value = ""
+        p.add_class("hidden")
+        self.query_one("#style-table", DataTable).focus()
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "style-prompt" or self._mode != "filter":
+            return
+        self._filter = event.value
+        self._refill()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        # Enter in the filter prompt: hide the prompt, keep the filter applied,
+        # return focus to the table so j/k works on the narrowed set.
+        if event.input.id != "style-prompt":
+            return
+        event.stop()
+        self._close_prompt(clear=False)
+
+    def on_data_table_row_selected(self, event) -> None:
+        # DataTable owns enter → RowSelected. Route to pick.
+        if event.data_table.id == "style-table":
+            self._pick()
+
+    def _pick(self) -> None:
         t = self.query_one("#style-table", DataTable)
         i = t.cursor_row
         if i is not None and 0 <= i < len(self._filtered):
@@ -805,113 +863,327 @@ class StyleScreen(ModalScreen["str | None"]):
         else:
             self.bell()
 
-    def action_cancel(self) -> None:
+    def action_close(self) -> None:
+        # esc in filter mode → clear + close prompt; esc in browse mode → cancel.
+        if self._mode != "browse":
+            self._close_prompt(clear=True)
+            return
         self.dismiss(None)
 
 
 # --------------------------------------------------------------------------- #
-# tag picker — add / remove / create tags on a library entry (ctrl-t)          #
+# tag editor — vocabulary-first: assign/unassign, add, rename, delete globally  #
 # --------------------------------------------------------------------------- #
-class TagScreen(ModalScreen["list[str] | None"]):
-    """Add/remove tags on a library entry. Filter-as-you-type over the library's tag
-    vocabulary; ↑/↓ move, enter toggles the highlighted tag (or, when your typed text
-    matches no existing tag, creates it and adds it). esc commits the selection and closes —
-    the caller writes it to info.yaml."""
+class TagPromptInput(Input):
+    """The bottom prompt Input inside TagScreen. When `substitute_space` is on
+    (add / rename modes), pressing spacebar inserts a `-` instead — papis' own
+    tag helper (papis.web.tags.TAGS_SPLIT_RX = r'\\s*[,\\s]\\s*') treats
+    whitespace as a tag separator, so tags with spaces would fragment when any
+    non-bib papis tool loads the doc. Substituting at input time keeps the
+    on-disk vocabulary papis-clean without a toast."""
+    substitute_space = False
+
+    def on_key(self, event) -> None:
+        if self.substitute_space and event.key == "space":
+            pos = self.cursor_position
+            self.value = self.value[:pos] + "-" + self.value[pos:]
+            self.cursor_position = pos + 1
+            event.prevent_default()
+            event.stop()
+
+
+class TagScreen(ModalScreen["None"]):
+    """Tag editor. The default view lists every tag in the vocabulary — the union of
+    tags currently attached to any library paper and the user's own `custom_tags`
+    (persisted in bib's state.json so orphan tags survive a restart). Each row shows
+    an assignment marker (● = attached to the currently selected paper) and a paper
+    count.
+
+    j/k navigate. `/` opens a filter over the visible list. `space` toggles the
+    highlighted tag on the current paper. `a` prompts for a name and adds a new
+    tag to the vocabulary (not assigned to any paper). `r` renames the highlighted
+    tag globally (across every paper that has it, plus the custom-tags list). `dd`
+    (chord) then y/n confirm deletes the highlighted tag from the vocabulary AND
+    from every paper that carries it. `esc` closes."""
     CSS = """
     TagScreen { align: center middle; background: $background 60%; }
     #tag-box { width: 60%; height: 70%; border: round $primary;
-               background: $surface; padding: 0 1; }
+               background: ansi_default; padding: 0 1; }
     #tag-title { color: $accent; }
     #tag-hint  { color: $text-muted; }
-    #tag-table { height: 1fr; }
-    #tag-table > .datatable--cursor { background: $accent; }
+    #tag-prompt { }
+    #tag-prompt.hidden { display: none; }
+    #tag-table { height: 1fr;
+        scrollbar-size-vertical: 1;
+        scrollbar-color: ansi_bright_black;
+        scrollbar-background: ansi_default;
+    }
+    #tag-table > .datatable--cursor {
+        background: ansi_bright_black; color: ansi_bright_white;
+    }
     """
     BINDINGS = [
         Binding("escape", "close", "close"),
-        Binding("down", "cursor_down", show=False),
-        Binding("up", "cursor_up", show=False),
-        Binding("enter", "choose", show=False),
+        Binding("j",      "cursor_down", show=False),
+        Binding("k",      "cursor_up",   show=False),
+        Binding("down",   "cursor_down", show=False),
+        Binding("up",     "cursor_up",   show=False),
+        Binding("g",      "top",         show=False),
+        Binding("G",      "bottom",      show=False),
+        Binding("slash",  "start_filter", show=False),
+        Binding("a",      "start_add",    show=False),
+        Binding("r",      "start_rename", show=False),
+        Binding("d",      "delete_chord", show=False),
+        Binding("space",  "toggle",       show=False),
     ]
+    _CHORD_TIMEOUT = 0.3
+    _HINT_DEFAULT = "j/k · / filter · a add · r rename · dd delete · space toggle · esc close"
 
-    def __init__(self, vocabulary: list[str], current: set[str], on_change) -> None:
+    def __init__(self, app_ref, node) -> None:
         super().__init__()
-        self._vocab = sorted(set(vocabulary))
-        self._selected = set(current)
-        self._apply = on_change      # called with the new tag list after every toggle (live save)
-        self._filtered: list[tuple[str, str]] = []   # (kind, value); kind in {"tag","create"}
+        self._app = app_ref
+        self._node = node
+        self._mode = "browse"         # "browse" | "filter" | "add" | "rename"
+        self._filter = ""
+        self._rename_from = ""
+        self._filtered: list[str] = []
+        self._pending_d = False
+        self._pending_timer = None
+        self._hint_timer = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="tag-box"):
-            yield Static("Tags — enter toggles (saves) · type a new name to create",
-                         id="tag-title")
-            yield Input(placeholder="filter tags · type a new tag…", id="tag-q")
+            yield TagPromptInput(id="tag-prompt", classes="hidden")
             yield DataTable(id="tag-table", cursor_type="row", zebra_stripes=True)
-            yield Static("↑/↓ move · enter toggle/create (saves) · esc close", id="tag-hint")
+            yield Static(self._HINT_DEFAULT, id="tag-hint")
 
     def on_mount(self) -> None:
         t = self.query_one("#tag-table", DataTable)
         t.add_column("Tag", key="tag")
-        self._fill("")
-        self.query_one("#tag-q", Input).focus()
+        t.add_column("Papers", key="count")
+        self._refill()
+        t.focus()                     # start on the table so j/k works immediately
 
-    def _fill(self, needle: str) -> None:
+    # ---- data helpers ------------------------------------------------------
+    def _current_paper_tags(self) -> set[str]:
+        return set(doc_tags(self._node.doc))
+
+    def _refill(self) -> None:
         t = self.query_one("#tag-table", DataTable)
         t.clear()
         self._filtered.clear()
-        needle = needle.strip()
-        low = needle.lower()
-        # a "create" row when the typed text is a tag that doesn't exist yet
-        if needle and low not in (v.lower() for v in self._vocab):
-            t.add_row(Text(f"＋ create “{needle}”", style="green"),
-                      key=f"__create__{needle}")
-            self._filtered.append(("create", needle))
-        for tag in self._vocab:
+        counts = self._app._library_tag_counts()
+        current = self._current_paper_tags()
+        low = self._filter.strip().lower()
+        for tag in self._app._all_vocab_tags():
             if low and low not in tag.lower():
                 continue
-            on = tag in self._selected
-            t.add_row(Text(("● " if on else "  ") + tag,
-                           style="bright_blue" if on else "dim"), key=tag)
-            self._filtered.append(("tag", tag))
+            on = tag in current
+            style = "bright_blue" if on else "dim"
+            mark  = "● " if on else "  "
+            t.add_row(Text(mark + tag, style=style),
+                      Text(str(counts.get(tag, 0)), style=style),
+                      key=tag)
+            self._filtered.append(tag)
         if self._filtered:
             t.move_cursor(row=0)
 
-    def on_input_changed(self, event: Input.Changed) -> None:
-        self._fill(event.value)
+    def _cursor_to(self, tag: str) -> None:
+        for i, v in enumerate(self._filtered):
+            if v == tag:
+                self.query_one("#tag-table", DataTable).move_cursor(row=i)
+                return
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        # Focus is on the filter Input, so Enter arrives here (the screen `enter` never fires).
-        event.stop()
-        self.action_choose()
+    def _selected_tag(self) -> str | None:
+        t = self.query_one("#tag-table", DataTable)
+        i = t.cursor_row
+        if i is None or not (0 <= i < len(self._filtered)):
+            return None
+        return self._filtered[i]
 
+    # ---- prompt (Input) mode helpers ---------------------------------------
+    def _open_prompt(self, mode: str, placeholder: str, initial: str = "") -> None:
+        self._mode = mode
+        p = self.query_one("#tag-prompt", TagPromptInput)
+        p.substitute_space = mode in ("add", "rename")   # papis: no spaces in tags
+        p.value = initial
+        p.placeholder = placeholder
+        p.remove_class("hidden")
+        p.focus()
+
+    def _close_prompt(self, refill: bool = True) -> None:
+        self._mode = "browse"
+        p = self.query_one("#tag-prompt", TagPromptInput)
+        p.substitute_space = False
+        p.value = ""
+        p.add_class("hidden")
+        self._filter = ""
+        if refill:
+            self._refill()
+        self.query_one("#tag-table", DataTable).focus()
+
+    # ---- gating: browse-mode bindings are inert while a prompt is up -------
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        if self._mode != "browse" and action in (
+            "cursor_down", "cursor_up", "top", "bottom",
+            "start_filter", "start_add", "start_rename", "delete_chord",
+            "toggle",
+        ):
+            return None
+        return True
+
+    # ---- nav ---------------------------------------------------------------
     def action_cursor_down(self) -> None:
         self.query_one("#tag-table", DataTable).action_cursor_down()
 
     def action_cursor_up(self) -> None:
         self.query_one("#tag-table", DataTable).action_cursor_up()
 
-    def action_choose(self) -> None:
-        t = self.query_one("#tag-table", DataTable)
-        i = t.cursor_row
-        if i is None or not (0 <= i < len(self._filtered)):
+    def action_top(self) -> None:
+        self.query_one("#tag-table", DataTable).action_scroll_top()
+
+    def action_bottom(self) -> None:
+        self.query_one("#tag-table", DataTable).action_scroll_bottom()
+
+    # ---- filter / add / rename prompts -------------------------------------
+    def action_start_filter(self) -> None:
+        self._open_prompt("filter", "filter tags", self._filter)
+
+    def action_start_add(self) -> None:
+        self._open_prompt("add", "add tag: ")
+
+    def action_start_rename(self) -> None:
+        tag = self._selected_tag()
+        if not tag:
             self.bell()
             return
-        kind, value = self._filtered[i]
-        if kind == "create":
-            self._vocab = sorted(set(self._vocab) | {value})
-            self._selected.add(value)
-            self.query_one("#tag-q", Input).value = ""   # clears filter (refills via on_changed)
-            self._fill("")
+        self._rename_from = tag
+        self._open_prompt("rename", f"rename '{tag}' to: ", tag)
+
+    # ---- destructive delete (dd chord + ConfirmScreen) ---------------------
+    def action_delete_chord(self) -> None:
+        tag = self._selected_tag()
+        if not tag:
+            self.bell()
+            return
+        if self._pending_d:
+            self._clear_pending_d()
+            self._confirm_delete(tag)
+            return
+        self._pending_d = True
+        n = self._app._library_tag_counts().get(tag, 0)
+        # timeout=0 pins the chord prompt — _clear_pending_d handles the reset
+        # after 300ms so the "d…" message doesn't disappear mid-chord.
+        self._hint(f"d… (press d again to delete '{tag}' from "
+                   f"{n} paper{'' if n == 1 else 's'})", timeout=0)
+        self._pending_timer = self.set_timer(self._CHORD_TIMEOUT, self._clear_pending_d)
+
+    def _clear_pending_d(self) -> None:
+        if self._pending_timer is not None:
+            self._pending_timer.stop()
+            self._pending_timer = None
+        if self._pending_d:
+            self._pending_d = False
+            self._hint_default()
+
+    def _confirm_delete(self, tag: str) -> None:
+        n = self._app._library_tag_counts().get(tag, 0)
+        detail = (f"Removes '{tag}' from the vocabulary and from "
+                  f"{n} paper{'' if n == 1 else 's'}.\n"
+                  "This cannot be undone.")
+        self.app.push_screen(
+            ConfirmScreen(f"Delete tag '{tag}' ?", detail),
+            lambda ok: self._do_delete(tag) if ok else None,
+        )
+
+    def _do_delete(self, tag: str) -> None:
+        try:
+            self._app._delete_tag_globally(tag)
+        except Exception as e:                    # noqa: BLE001
+            self.notify(f"delete failed: {e}", severity="error")
+            return
+        self._refill()
+        self._hint(f"deleted '{tag}'")
+
+    # ---- toggle assignment on the current paper ----------------------------
+    def action_toggle(self) -> None:
+        tag = self._selected_tag()
+        if not tag:
+            self.bell()
+            return
+        current = self._current_paper_tags()
+        if tag in current:
+            current.discard(tag)
         else:
-            self._selected.discard(value) if value in self._selected else self._selected.add(value)
-            self._fill(self.query_one("#tag-q", Input).value)
-            for idx, (k, v) in enumerate(self._filtered):   # keep cursor on the toggled tag
-                if k == "tag" and v == value:
-                    t.move_cursor(row=idx)
-                    break
-        self._apply(sorted(self._selected))     # live save — every toggle/create persists now
+            current.add(tag)
+        self._app._apply_tags(self._node, sorted(current))
+        self._refill()
+        self._cursor_to(tag)
+
+    # ---- input events ------------------------------------------------------
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "tag-prompt":
+            return
+        if self._mode == "filter":
+            self._filter = event.value
+            self._refill()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        if event.input.id != "tag-prompt":
+            return
+        event.stop()
+        value = event.value.strip()
+        mode = self._mode
+        if mode == "filter":
+            # Hide the prompt but keep the filter buffer applied.
+            p = self.query_one("#tag-prompt", TagPromptInput)
+            p.add_class("hidden")
+            self._mode = "browse"
+            self.query_one("#tag-table", DataTable).focus()
+            return
+        # add/rename: paste-safe — sanitize whitespace runs to a single `-`
+        # (matches the live spacebar substitution). No-op if the field already
+        # obeyed the rule via keystrokes.
+        value = re.sub(r"\s+", "-", value)
+        if mode == "add":
+            self._close_prompt()
+            if value:
+                self._app._add_custom_tag(value)
+                self._refill()
+                self._cursor_to(value)
+                self._hint(f"added '{value}'")
+            return
+        if mode == "rename":
+            old = self._rename_from
+            self._close_prompt()
+            if value and value != old:
+                self._app._rename_tag_globally(old, value)
+                self._refill()
+                self._cursor_to(value)
+                self._hint(f"renamed '{old}' → '{value}'")
+            return
+
+    def _hint(self, msg: str, timeout: float = 1.5) -> None:
+        """Show a transient status line under the tag table. After `timeout`
+        seconds the row reverts to the keyboard-shortcut cheat sheet. Passing
+        timeout=0 pins the message until the next _hint call."""
+        self.query_one("#tag-hint", Static).update(msg)
+        if self._hint_timer is not None:
+            self._hint_timer.stop()
+            self._hint_timer = None
+        if timeout > 0:
+            self._hint_timer = self.set_timer(timeout, self._hint_default)
+
+    def _hint_default(self) -> None:
+        self._hint_timer = None
+        self.query_one("#tag-hint", Static).update(self._HINT_DEFAULT)
 
     def action_close(self) -> None:
-        self.dismiss(None)                      # esc just closes; nothing pending to persist
+        # esc in a prompt cancels the prompt; esc in browse mode dismisses the modal.
+        if self._mode != "browse":
+            self._close_prompt()
+            return
+        self.dismiss(None)
 
 
 # --------------------------------------------------------------------------- #
@@ -1186,13 +1458,63 @@ class TopCard(Vertical):
 # --------------------------------------------------------------------------- #
 # filter prompt — a slim Input that pops in above the status row on `/`         #
 # --------------------------------------------------------------------------- #
+class TagPicker(OptionList):
+    """Inline autocomplete popup that appears above the filter Input while the cursor
+    sits inside a `#<partial>` token. Populated with library tags whose name contains
+    the current prefix, ranked by descending count. Focus stays on the filter Input;
+    this widget is display-only — nav (ctrl+j/k, arrows) and accept (enter/tab) come
+    from FilterInput.on_key while the popup is visible."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.can_focus = False
+
+
 class FilterInput(Input):
     """The bottom-row filter prompt. Its own esc binding routes to the app so the app
     can hide the widget AND clear the filter atomically. Everything else (typing,
     backspace, enter/submit) is inherited from Input; the app owns the Changed +
-    Submitted message handlers so filter state stays on the app, not this widget."""
+    Submitted message handlers so filter state stays on the app, not this widget.
+
+    While the TagPicker popup is visible (cursor inside a `#…` token), on_key steals
+    ctrl+j/k + arrows for popup nav and enter/tab for accept; typing letters still
+    reaches the Input and re-narrows both the library filter and the popup set."""
 
     BINDINGS = [Binding("escape", "app.close_filter_and_clear", show=False)]
+
+    def check_action(self, action: str, parameters: tuple) -> bool | None:
+        # While the tag picker is up, esc dismisses the picker first (handled in
+        # on_key). Suppress the app's close_filter_and_clear binding so it doesn't
+        # race and close the filter along with the picker.
+        if action == "app.close_filter_and_clear":
+            picker = self.app.query_one("#tag-picker", TagPicker)
+            if not picker.has_class("hidden"):
+                return None
+        return True
+
+    def on_key(self, event) -> None:
+        picker = self.app.query_one("#tag-picker", TagPicker)
+        if picker.has_class("hidden"):
+            return
+        key = event.key
+        if key == "escape":
+            picker.add_class("hidden")
+            event.prevent_default(); event.stop()
+            return
+        if key in ("enter", "tab"):
+            if picker.option_count and picker.highlighted is not None:
+                opt = picker.get_option_at_index(picker.highlighted)
+                self.app._complete_tag_token(opt.id or "")
+            event.prevent_default(); event.stop()
+            return
+        if key in ("ctrl+j", "down"):
+            picker.action_cursor_down()
+            event.prevent_default(); event.stop()
+            return
+        if key in ("ctrl+k", "up"):
+            picker.action_cursor_up()
+            event.prevent_default(); event.stop()
+            return
 
 
 # --------------------------------------------------------------------------- #
@@ -1217,6 +1539,17 @@ class BibApp(App):
        match the modal aesthetics; live-narrows the visible rows as the user types. */
     #filter { height: 3; border: round $primary; }
     #filter.hidden { display: none; }
+    /* tag picker: pops in above the filter while cursor sits in a `#…` token */
+    #tag-picker { height: auto; max-height: 8; border: round $primary; }
+    #tag-picker.hidden { display: none; }
+    /* Focus stays on the filter Input, so the OptionList never gets the "focused"
+       highlight — force the highlighted row to render like it is anyway, else the
+       cursor is invisible and the user can't tell what enter would accept. */
+    #tag-picker > .option-list--option-highlighted {
+        background: ansi_bright_black;
+        color: ansi_bright_white;
+        text-style: bold;
+    }
     #status { height: 1; color: $text-muted; padding: 0 1; }
     #hint   { height: 1; color: $warning;    padding: 0 1; }   /* ephemeral messages */
     DataTable > .datatable--cursor { background: ansi_bright_black; color: ansi_bright_white; }
@@ -1297,6 +1630,7 @@ class BibApp(App):
     def compose(self) -> ComposeResult:
         yield TopCard(id="card")
         yield DataTable(id="center", cursor_type="row", zebra_stripes=True)
+        yield TagPicker(id="tag-picker", classes="hidden")
         yield FilterInput(placeholder="filter · #tag prefix",
                           id="filter", classes="hidden")
         yield Static(id="status")
@@ -1484,6 +1818,18 @@ class BibApp(App):
             return None
         if self._pending is not None:
             return None
+        # Tab is bound app-level (forward through the frame history, priority=True)
+        # so it beats FilterInput.on_key. When the tag picker is up (user is in
+        # `/`, cursor inside a `#…` token), tab must complete the highlighted tag
+        # instead of firing forward-history. Gate the binding so FilterInput.on_key
+        # gets the key and handles completion.
+        if action == "forward" and isinstance(self.focused, FilterInput):
+            try:
+                picker = self.query_one("#tag-picker", TagPicker)
+            except Exception:                        # noqa: BLE001
+                picker = None
+            if picker is not None and not picker.has_class("hidden"):
+                return None
         return True
 
     def on_key(self, event) -> None:
@@ -1586,6 +1932,62 @@ class BibApp(App):
         if event.input.id == "filter":
             self.filter_buf = event.value
             self._render_center()
+            self._update_tag_picker()
+
+    # ---- tag picker (inline autocomplete when cursor is in a `#…` token) ----
+    def _tag_token_at_cursor(self) -> tuple[str, int, int] | None:
+        """(prefix-without-hash, token_start, token_end) if the space-delimited token
+        under the filter's cursor starts with '#'; None otherwise."""
+        filt = self.query_one("#filter", FilterInput)
+        buf, cur = filt.value, filt.cursor_position
+        start = buf.rfind(" ", 0, cur) + 1
+        end = buf.find(" ", cur)
+        if end == -1:
+            end = len(buf)
+        tok = buf[start:end]
+        if not tok.startswith("#"):
+            return None
+        return tok[1:], start, end
+
+    def _update_tag_picker(self) -> None:
+        """Reveal + populate the picker when in a `#…` token; hide otherwise. Ranks
+        matches by descending library count, then alphabetical."""
+        picker = self.query_one("#tag-picker", TagPicker)
+        got = self._tag_token_at_cursor()
+        if got is None:
+            picker.add_class("hidden")
+            return
+        prefix = got[0].lower()
+        # Recompute per keystroke — cheap over `self.library`, and picks up any
+        # tags added/renamed via TagScreen since the app started.
+        counts = Counter(t for n in self.library for t in doc_tags(n.doc))
+        matches = sorted(
+            ((tag, cnt) for tag, cnt in counts.items()
+             if prefix in tag.lower()),
+            key=lambda x: (-x[1], x[0]),
+        )[:20]
+        if not matches:
+            picker.add_class("hidden")
+            return
+        picker.clear_options()
+        for tag, cnt in matches:
+            picker.add_option(Option(f"{tag}  ({cnt})", id=tag))
+        picker.highlighted = 0
+        picker.remove_class("hidden")
+
+    def _complete_tag_token(self, tag: str) -> None:
+        """Enter/tab from the picker: replace the `#<partial>` at cursor with
+        `#<full-tag> ` (trailing space so more filter terms can follow)."""
+        got = self._tag_token_at_cursor()
+        if got is None or not tag:
+            return
+        _, start, end = got
+        filt = self.query_one("#filter", FilterInput)
+        buf = filt.value
+        filt.value = f"{buf[:start]}#{tag} {buf[end:]}"
+        filt.cursor_position = start + len(tag) + 2
+        # setting .value fires on_input_changed → _update_tag_picker hides the popup
+        # (cursor is now past a space, so no `#` token at cursor).
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Enter in the filter prompt: hide the widget but KEEP the filter applied,
@@ -1834,29 +2236,83 @@ class BibApp(App):
         self.notify(f"notes @{n.ref}")
 
     def action_tags(self) -> None:
-        """Add/remove tags on the selected library entry via a toggle picker. Every toggle
-        saves immediately; esc just closes. Only for in-library papers; grey nodes have no
-        info.yaml to tag."""
+        """Open the tag editor for the selected library entry. The modal is
+        vocabulary-first: enter toggles assignment on this paper, but a/r/dd
+        also add / rename / delete tags across the whole library. Grey nodes
+        have no info.yaml so we skip them."""
         n = self._selected_library_node()
         if n is None:
             return
         self.push_screen(
-            TagScreen(self._library_tags(), set(doc_tags(n.doc)),
-                      on_change=lambda tags: self._apply_tags(n, tags)),
-            lambda _r: self._render_center())     # one refresh once the picker closes
+            TagScreen(self, n),
+            lambda _r: self._render_center())     # one refresh once the editor closes
 
     def _library_tags(self) -> list[str]:
-        """Every distinct tag currently in the library — the picker's vocabulary."""
+        """Every distinct tag currently attached to some library paper."""
         seen: set[str] = set()
         for x in self.library:
             seen.update(doc_tags(x.doc))
         return sorted(seen)
 
+    def _library_tag_counts(self) -> dict[str, int]:
+        """{tag: number of papers that carry it} across the whole library."""
+        counts: dict[str, int] = {}
+        for x in self.library:
+            for t in doc_tags(x.doc):
+                counts[t] = counts.get(t, 0) + 1
+        return counts
+
+    def _custom_tags(self) -> list[str]:
+        """User-added tags that don't (yet) appear on any paper. Persisted in
+        state.json under `custom_tags` so orphan tags survive restarts."""
+        return list(_load_state().get("custom_tags", []))
+
+    def _all_vocab_tags(self) -> list[str]:
+        """Union of library-attached tags and the user's custom tags."""
+        return sorted(set(self._library_tags()) | set(self._custom_tags()))
+
+    def _add_custom_tag(self, name: str) -> None:
+        """Add `name` to the persisted custom-tags list (idempotent)."""
+        name = name.strip()
+        if not name:
+            return
+        state = _load_state()
+        ct = set(state.get("custom_tags", []))
+        ct.add(name)
+        _save_state(custom_tags=sorted(ct))
+
+    def _delete_tag_globally(self, name: str) -> None:
+        """Remove `name` from every library paper that has it AND from the
+        custom-tags list. Writes each affected info.yaml + refreshes the papis
+        cache. No-op for tags that don't exist."""
+        for x in self.library:
+            tags = doc_tags(x.doc)
+            if name in tags:
+                self._apply_tags(x, [t for t in tags if t != name])
+        state = _load_state()
+        ct = [t for t in state.get("custom_tags", []) if t != name]
+        _save_state(custom_tags=ct)
+
+    def _rename_tag_globally(self, old: str, new: str) -> None:
+        """Rename `old` to `new` across every paper that carries it plus the
+        custom-tags list. If `new` already exists on a paper, the two collapse
+        (no duplicate). No-op if old == new."""
+        if not new or old == new:
+            return
+        for x in self.library:
+            tags = doc_tags(x.doc)
+            if old in tags:
+                self._apply_tags(x, sorted({(new if t == old else t) for t in tags}))
+        state = _load_state()
+        ct = {(new if t == old else t) for t in state.get("custom_tags", [])}
+        _save_state(custom_tags=sorted(ct))
+
     def _apply_tags(self, n: Node, tags: list[str]) -> None:
-        """Live-write `tags` onto n's entry from the picker (one toggle = one save). The in-
-        library nodes for a paper share a single papis doc object, so mutating it in place
-        propagates to every view; we persist to info.yaml and refresh the search index. The
-        visible table/card re-render once, when the picker closes (see action_tags callback)."""
+        """Live-write `tags` onto n's entry (one toggle = one save). The in-
+        library nodes for a paper share a single papis doc object, so mutating
+        it in place propagates to every view; we persist to info.yaml and
+        refresh the search index. The visible table/card re-render once, when
+        the editor closes (see action_tags callback)."""
         new = sorted(set(tags))
         if new == sorted(doc_tags(n.doc)):
             return                                # no change — skip the write

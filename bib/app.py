@@ -1658,7 +1658,7 @@ class BibApp(App):
         self.library = sorted((node_from_doc(d) for d in docs),
                               key=lambda n: str(n.year or ""))
         table = self.query_one("#center", DataTable)
-        table.add_columns(" ", "Year", "Author", "Title", "Infl", "Citations", "References")
+        table.add_columns(" ", "Year", "Author", "Title", "Infl", "Citations", "References", "Tags")
         self.query_one(TopCard).csl_mode = bool(_load_state().get("csl_mode", False))
         self._push(Frame("Papers", self.library))
         table.focus()
@@ -1723,6 +1723,16 @@ class BibApp(App):
             glyph_style = "yellow"
         else:
             glyph_style = ""
+        # Tag glyph: one bright-blue dot per tag, space-separated, cap of 5;
+        # anything beyond shows as "● ● ● ● ● +N" so density stays legible even
+        # if a paper gets absurdly tagged.
+        tcount = len(doc_tags(n.doc)) if n.in_library else 0
+        if tcount == 0:
+            tag_cell = ""
+        elif tcount <= 5:
+            tag_cell = " ".join(["●"] * tcount)
+        else:
+            tag_cell = "● ● ● ● ● +" + str(tcount - 5)
         return (
             Text(type_glyph(n.type), style=glyph_style),
             Text(str(n.year or ""), style=style),
@@ -1731,6 +1741,7 @@ class BibApp(App):
             Text(infl, style="bright_blue" if infl else (style or "bright_black"), justify="right"),
             Text(cited, style=style or "bright_black", justify="right"),
             Text(refs, style=style or "bright_black", justify="right"),
+            Text(tag_cell, style="bright_blue", justify="center"),
         )
 
     def _render_center(self) -> None:

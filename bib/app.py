@@ -1739,8 +1739,8 @@ class BibApp(App):
             Text(n.first_author, style=style),
             Text(t, style=style),
             Text(infl, style="bright_blue" if infl else (style or "bright_black"), justify="right"),
-            Text(cited, style=style or "bright_black", justify="right"),
-            Text(refs, style=style or "bright_black", justify="right"),
+            Text(cited, style=style, justify="right"),
+            Text(refs, style=style, justify="right"),
             Text(tag_cell, style="bright_blue", justify="center"),
         )
 

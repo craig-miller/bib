@@ -716,7 +716,7 @@ class FetchScreen(ModalScreen["str | None"]):
             return
         c = self._cands[i]
         if not c.get("ok"):
-            self.bell()
+            # notify() already provides visual feedback; no audible bell.
             self.notify("that source isn't a verified PDF", severity="warning")
             return
         self.dismiss(c["url"])
@@ -765,12 +765,27 @@ class StyleScreen(ModalScreen["str | None"]):
         self._filtered: list[str] = []  # ids currently shown, row-aligned
         self._mode = "browse"           # "browse" | "filter"
         self._filter = ""
+        self._hint_timer = None
 
     def compose(self) -> ComposeResult:
         with Vertical(id="style-box"):
             yield Input(id="style-prompt", classes="hidden")
             yield DataTable(id="style-table", cursor_type="row", zebra_stripes=True)
             yield Static(self._HINT_DEFAULT, id="style-hint")
+
+    def _hint(self, msg: str, timeout: float = 1.5) -> None:
+        """Show a transient status line under the style table. Reverts to the
+        keyboard-shortcut cheat sheet after `timeout` seconds. timeout=0 pins."""
+        self.query_one("#style-hint", Static).update(msg)
+        if self._hint_timer is not None:
+            self._hint_timer.stop()
+            self._hint_timer = None
+        if timeout > 0:
+            self._hint_timer = self.set_timer(timeout, self._hint_default)
+
+    def _hint_default(self) -> None:
+        self._hint_timer = None
+        self.query_one("#style-hint", Static).update(self._HINT_DEFAULT)
 
     def on_mount(self) -> None:
         t = self.query_one("#style-table", DataTable)
@@ -861,7 +876,7 @@ class StyleScreen(ModalScreen["str | None"]):
         if i is not None and 0 <= i < len(self._filtered):
             self.dismiss(self._filtered[i])
         else:
-            self.bell()
+            self._hint("nothing selected")
 
     def action_close(self) -> None:
         # esc in filter mode → clear + close prompt; esc in browse mode → cancel.
@@ -1055,7 +1070,7 @@ class TagScreen(ModalScreen["None"]):
     def action_start_rename(self) -> None:
         tag = self._selected_tag()
         if not tag:
-            self.bell()
+            self._hint("nothing selected")
             return
         self._rename_from = tag
         self._open_prompt("rename", f"rename '{tag}' to: ", tag)
@@ -1064,7 +1079,7 @@ class TagScreen(ModalScreen["None"]):
     def action_delete_chord(self) -> None:
         tag = self._selected_tag()
         if not tag:
-            self.bell()
+            self._hint("nothing selected")
             return
         if self._pending_d:
             self._clear_pending_d()
@@ -1109,7 +1124,7 @@ class TagScreen(ModalScreen["None"]):
     def action_toggle(self) -> None:
         tag = self._selected_tag()
         if not tag:
-            self.bell()
+            self._hint("nothing selected")
             return
         current = self._current_paper_tags()
         if tag in current:

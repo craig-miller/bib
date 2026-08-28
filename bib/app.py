@@ -2534,7 +2534,12 @@ class BibApp(App):
     # ---- live graph walk (grey neighbors) ---------------------------------- #
     async def _get_client(self) -> gc.Client:
         if self._client is None:
-            self._client = gc.Client()
+            # Client construction may read API tokens from `pass`, which can launch
+            # pinentry when gpg-agent is locked. Suspend Textual so it releases the
+            # terminal instead of continuing to consume keystrokes while the curses
+            # pinentry prompt is active.
+            with self.suspend():
+                self._client = gc.Client()
         return self._client
 
     async def _grey_oa_id(self, client: gc.Client, node: Node) -> str | None:

@@ -2,7 +2,7 @@
 """Screenshot harness for Phase-1 live grey-node fetch. Walks into a library paper's
 citations (grey rows read from the sidecar), then promotes into a GREY child — which has
 no sidecar — so the background worker resolves it on OpenAlex and streams neighbors in.
-Real network from zentoo; we sleep to let pages arrive."""
+Uses the real network; we sleep to let pages arrive."""
 import asyncio
 import sys
 
